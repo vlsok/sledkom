@@ -10,6 +10,7 @@ from flask import (
     url_for,
     session,
 )
+from werkzeug.security import generate_password_hash, check_password_hash
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -31,6 +32,10 @@ from database import (
     get_access_request_by_id,
     update_access_request_status,
     count_access_requests_by_status,
+    create_or_update_web_user,
+    get_web_user_by_discord_id,
+    get_recent_web_users,
+    set_web_user_active,
 )
 
 app = Flask(__name__)
@@ -53,6 +58,15 @@ def login_required(func):
     def wrapper(*args, **kwargs):
         if not session.get("panel_auth"):
             return redirect(url_for("login"))
+        return func(*args, **kwargs)
+    return wrapper
+
+
+def staff_login_required(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        if not session.get("staff_auth") or not session.get("staff_discord_id"):
+            return redirect(url_for("staff_login"))
         return func(*args, **kwargs)
     return wrapper
 
@@ -93,6 +107,27 @@ def filter_access_requests(requests_list, status="", fio="", department=""):
         result = [x for x in result if fio.lower() in (x.get("fio") or "").lower()]
     if department:
         result = [x for x in result if (x.get("department") or "") == department]
+    return result
+
+
+def get_staff_current_user():
+    discord_id = session.get("staff_discord_id")
+    if not discord_id:
+        return None
+    try:
+        return get_web_user_by_discord_id(int(discord_id))
+    except Exception:
+        return None
+
+
+def filter_web_users(users, department="", fio="", role=""):
+    result = users
+    if department:
+        result = [x for x in result if (x.get("department") or "") == department]
+    if fio:
+        result = [x for x in result if fio.lower() in (x.get("fio") or "").lower()]
+    if role:
+        result = [x for x in result if (x.get("role") or "") == role]
     return result
 
 
@@ -400,6 +435,7 @@ def render_page(title: str, content: str, active: str = "dashboard"):
                 <nav class="nav">
                     <a href="/admin" class="{{ 'active' if active == 'dashboard' else '' }}">📊 Дашборд</a>
                     <a href="/access-requests" class="{{ 'active' if active == 'access_requests' else '' }}">🛂 Заявки на доступ</a>
+                    <a href="/staff-users">👥 Веб-сотрудники</a>
                     <a href="/appeals" class="{{ 'active' if active == 'appeals' else '' }}">📨 Обращения</a>
                     <a href="/employees" class="{{ 'active' if active == 'employees' else '' }}">👥 Кадры</a>
                     <a href="/analytics" class="{{ 'active' if active == 'analytics' else '' }}">📈 Аналитика</a>
@@ -500,8 +536,28 @@ def public_index():
     return render_template_string(template)
 
 
-@app.route("/staff-login")
+@app.route("/staff-login", methods=["GET", "POST"])
 def staff_login():
+    error = ""
+
+    if request.method == "POST":
+        discord_id_raw = request.form.get("discord_id", "").strip()
+        password = request.form.get("password", "").strip()
+
+        if not discord_id_raw.isdigit():
+            error = "Discord ID должен быть числом."
+        else:
+            user = get_web_user_by_discord_id(int(discord_id_raw))
+            if not user or int(user.get("is_active") or 0) != 1:
+                error = "Доступ не найден или отключён."
+            elif not check_password_hash(user.get("password_hash") or "", password):
+                error = "Неверный пароль."
+            else:
+                session["staff_auth"] = True
+                session["staff_discord_id"] = int(discord_id_raw)
+                session["staff_fio"] = user.get("fio")
+                return redirect(url_for("staff_dashboard"))
+
     template = """
     <!doctype html>
     <html lang="ru">
@@ -519,24 +575,38 @@ def staff_login():
                 border:1px solid rgba(148,163,184,.08); border-radius:24px; padding:26px; box-shadow:0 16px 35px rgba(0,0,0,.30);
             }
             h1 { margin:0 0 12px 0; } p { color:#94a3b8; line-height:1.6; }
+            input {
+                width:100%; padding:12px; border-radius:12px; border:1px solid #475569;
+                background:#0f172a; color:white; margin-bottom:14px; box-sizing:border-box;
+            }
+            button {
+                width:100%; padding:12px; border:none; border-radius:12px; background:#2563eb;
+                color:white; font-weight:bold; cursor:pointer;
+            }
             .actions { display:flex; gap:12px; flex-wrap:wrap; margin-top:18px; }
-            a { display:inline-block; padding:12px 16px; border-radius:12px; background:#2563eb; color:white; text-decoration:none; font-weight:bold; }
-            a.secondary { background:#334155; }
+            a { color:#94a3b8; text-decoration:none; }
+            .error { margin-top:12px; padding:12px; border-radius:12px; background:rgba(220,38,38,.16); color:#fecaca; }
         </style>
     </head>
     <body>
         <div class="card">
             <h1>👥 Раздел сотрудников</h1>
-            <p>На следующем этапе здесь появится полноценная авторизация сотрудников. Сейчас можно подать заявку на доступ.</p>
+            <p>Вход для сотрудников с уже одобренным доступом.</p>
+            <form method="post">
+                <input type="text" name="discord_id" placeholder="Discord ID" required>
+                <input type="password" name="password" placeholder="Пароль" required>
+                <button type="submit">Войти</button>
+            </form>
+            {% if error %}<div class="error">{{ error }}</div>{% endif %}
             <div class="actions">
                 <a href="/request-access">Запросить доступ</a>
-                <a class="secondary" href="/">На главную</a>
+                <a href="/">На главную</a>
             </div>
         </div>
     </body>
     </html>
     """
-    return render_template_string(template)
+    return render_template_string(template, error=error)
 
 
 @app.route("/request-access", methods=["GET", "POST"])
@@ -663,6 +733,141 @@ def to_leadership():
     </html>
     """
     return render_template_string(template)
+
+
+@app.route("/staff/logout")
+def staff_logout():
+    session.pop("staff_auth", None)
+    session.pop("staff_discord_id", None)
+    session.pop("staff_fio", None)
+    return redirect(url_for("staff_login"))
+
+
+@app.route("/staff/dashboard")
+@staff_login_required
+def staff_dashboard():
+    user = get_staff_current_user()
+    if not user:
+        return redirect(url_for("staff_logout"))
+
+    employee = search_employee_by_discord_id(int(user["discord_id"]))
+    employee_block = "<div class='muted'>Карточка сотрудника пока не создана в системе.</div>"
+    if employee:
+        employee_block = f"""
+        <div class="grid">
+            <div class="box"><b>Статус:</b><br>{employee.get('status','—')}</div>
+            <div class="box"><b>Звание:</b><br>{employee.get('rank_name','—')}</div>
+            <div class="box"><b>Всего дел:</b><br>{employee.get('cases_count',0)}</div>
+            <div class="box"><b>Закрыто дел:</b><br>{employee.get('closed_cases_count',0)}</div>
+            <div class="box"><b>Выговоры:</b><br>{employee.get('warnings_count',0)}</div>
+            <div class="box"><b>Награды:</b><br>{employee.get('rewards_count',0)}</div>
+        </div>
+        <div class="box" style="margin-top:14px;"><b>Примечания:</b><br>{employee.get('notes') or '—'}</div>
+        """
+
+    template = """
+    <!doctype html>
+    <html lang="ru">
+    <head>
+        <meta charset="utf-8">
+        <title>Кабинет сотрудника</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body { margin:0; font-family:Arial,sans-serif; background:linear-gradient(135deg,#08111f,#0f172a,#111827); color:#e5e7eb; }
+            .wrap { max-width:1000px; margin:0 auto; padding:24px; }
+            .top { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
+            .card { background:linear-gradient(180deg, rgba(24,34,53,.98), rgba(19,28,44,.98)); border:1px solid rgba(148,163,184,.08); border-radius:20px; padding:18px; margin-bottom:18px; }
+            .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; }
+            .box { background:#0f172a; border:1px solid rgba(148,163,184,.08); border-radius:14px; padding:14px; }
+            .btn { display:inline-block; padding:12px 16px; border-radius:12px; background:#2563eb; color:white; text-decoration:none; font-weight:bold; }
+            .btn.secondary { background:#334155; }
+            .muted { color:#94a3b8; }
+        </style>
+    </head>
+    <body>
+        <div class="wrap">
+            <div class="top">
+                <div>
+                    <h1 style="margin:0 0 8px 0;">👥 Кабинет сотрудника</h1>
+                    <div class="muted">Добро пожаловать, {{ fio }}</div>
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <a class="btn secondary" href="/">На главную</a>
+                    <a class="btn" href="/staff/logout">Выйти</a>
+                </div>
+            </div>
+            <div class="card">
+                <h3>Доступ к порталу</h3>
+                <div class="grid">
+                    <div class="box"><b>ФИО:</b><br>{{ fio }}</div>
+                    <div class="box"><b>Discord ID:</b><br>{{ discord_id }}</div>
+                    <div class="box"><b>Подразделение:</b><br>{{ department }}</div>
+                    <div class="box"><b>Должность:</b><br>{{ position }}</div>
+                </div>
+            </div>
+            <div class="card">
+                <h3>Карточка сотрудника</h3>
+                {{ employee_block|safe }}
+            </div>
+            <div class="card">
+                <h3>Следующие действия</h3>
+                <div class="muted">Раздел сотрудников активирован. Следующим этапом сюда можно добавить загрузку документов и обращения напрямую руководству.</div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return render_template_string(template, fio=user.get('fio','—'), discord_id=user.get('discord_id','—'), department=user.get('department','—'), position=user.get('position') or '—', employee_block=employee_block)
+
+
+@app.route("/staff-users")
+@login_required
+def staff_users():
+    department = request.args.get("department", "").strip()
+    fio = request.args.get("fio", "").strip()
+    role = request.args.get("role", "").strip()
+    items = filter_web_users(get_recent_web_users(200), department=department, fio=fio, role=role)
+
+    rows = ""
+    for item in items:
+        rows += f"""
+        <tr>
+            <td>{item.get('fio','')}</td>
+            <td>{item.get('discord_id','')}</td>
+            <td>{item.get('department','')}</td>
+            <td>{item.get('position') or '—'}</td>
+            <td>{item.get('role','')}</td>
+            <td>{'Активен' if int(item.get('is_active') or 0) == 1 else 'Отключён'}</td>
+        </tr>
+        """
+
+    content = f"""
+    <div class="card">
+        <h3>👥 Веб-пользователи сотрудников</h3>
+        <div class="toolbar">
+            <form method="get" action="/staff-users">
+                <select name="department">
+                    <option value="">Все подразделения</option>
+                    <option value="СО" {'selected' if department == 'СО' else ''}>СО</option>
+                    <option value="ВСО" {'selected' if department == 'ВСО' else ''}>ВСО</option>
+                    <option value="Другое" {'selected' if department == 'Другое' else ''}>Другое</option>
+                </select>
+                <input type="text" name="fio" placeholder="Поиск по ФИО" value="{fio}">
+                <select name="role">
+                    <option value="">Все роли</option>
+                    <option value="employee" {'selected' if role == 'employee' else ''}>employee</option>
+                    <option value="admin" {'selected' if role == 'admin' else ''}>admin</option>
+                </select>
+                <button class="btn" type="submit">Применить фильтр</button>
+            </form>
+        </div>
+        <table>
+            <tr><th>ФИО</th><th>Discord ID</th><th>Подразделение</th><th>Должность</th><th>Роль</th><th>Статус</th></tr>
+            {rows or '<tr><td colspan="6">Нет пользователей</td></tr>'}
+        </table>
+    </div>
+    """
+    return render_page("Веб-пользователи", content, active="access_requests")
 
 
 # =========================
@@ -903,6 +1108,10 @@ def access_request_card(request_id):
         admin_comment = request.form.get("admin_comment", "").strip() or None
 
         if action == "approve":
+            password = request.form.get("password", "").strip()
+            if len(password) < 4:
+                return redirect(url_for("access_request_card", request_id=request_id, message="Пароль должен быть минимум 4 символа"))
+
             update_access_request_status(
                 request_id=request_id,
                 status="Одобрено",
@@ -910,7 +1119,16 @@ def access_request_card(request_id):
                 reviewed_by_name="WEB_PANEL_ADMIN",
                 admin_comment=admin_comment,
             )
-            return redirect(url_for("access_request_card", request_id=request_id, message="Заявка одобрена"))
+            create_or_update_web_user(
+                discord_id=int(item["discord_id"]),
+                fio=item["fio"],
+                department=item["department"],
+                position=item["position"],
+                password_hash=generate_password_hash(password),
+                role="employee",
+                approved_request_id=request_id,
+            )
+            return redirect(url_for("access_request_card", request_id=request_id, message="Заявка одобрена, доступ создан"))
 
         if action == "reject":
             update_access_request_status(
@@ -953,6 +1171,7 @@ def access_request_card(request_id):
     <div class="card">
         <h3>⚙️ Решение по заявке</h3>
         <form method="post">
+            <input type="text" name="password" placeholder="Пароль для сотрудника при одобрении">
             <textarea name="admin_comment" placeholder="Комментарий для заявки">{item.get("admin_comment") or ""}</textarea>
             <div style="display:flex; gap:12px; flex-wrap:wrap;">
                 <button class="btn" type="submit" name="action" value="approve">✅ Одобрить</button>
