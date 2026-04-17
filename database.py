@@ -824,3 +824,27 @@ def mark_web_notification_sent(notification_id: int) -> None:
             WHERE id = %s
             """, ("sent", now_str(), notification_id))
         conn.commit()
+
+
+# =========================
+# COMPATIBILITY ALIASES
+# =========================
+
+def get_recent_access_requests(limit: int = 100) -> list[dict]:
+    return get_recent_web_access_requests(limit)
+
+
+def get_access_request(request_id: int) -> Optional[dict]:
+    return get_web_access_request(request_id)
+
+
+def count_access_requests_by_status(status: str) -> int:
+    return count_web_access_requests_by_status(status)
+
+
+def approve_access_request(request_id: int, reviewed_by: int = 0, reviewed_by_name: str = "WEB_PANEL") -> dict | None:
+    return approve_web_access_request(request_id, reviewed_by, reviewed_by_name)
+
+
+def reject_access_request(request_id: int, reviewed_by: int = 0, reviewed_by_name: str = "WEB_PANEL") -> dict | None:
+    return reject_web_access_request(request_id, reviewed_by, reviewed_by_name)
