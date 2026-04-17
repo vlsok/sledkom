@@ -12,6 +12,7 @@ from flask import (
     session,
 )
 from werkzeug.security import generate_password_hash, check_password_hash
+import secrets
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -37,6 +38,7 @@ from database import (
     get_web_user_by_discord_id,
     get_recent_web_users,
     set_web_user_active,
+    enqueue_web_notification,
 )
 
 app = Flask(__name__)
@@ -338,6 +340,12 @@ def update_employee_from_web(discord_id: int, form: dict):
         notes=form.get("notes", "").strip(),
     )
 
+
+
+
+def generate_staff_password(length: int = 10) -> str:
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 def render_page(title: str, content: str, active: str = "dashboard"):
     message = request.args.get("message", "")
@@ -1140,9 +1148,7 @@ def access_request_card(request_id):
         admin_comment = request.form.get("admin_comment", "").strip() or None
 
         if action == "approve":
-            password = request.form.get("password", "").strip()
-            if len(password) < 4:
-                return redirect(url_for("access_request_card", request_id=request_id, message="Пароль должен быть минимум 4 символа"))
+            password = generate_staff_password()
 
             update_access_request_status(
                 request_id=request_id,
@@ -1160,7 +1166,25 @@ def access_request_card(request_id):
                 role="employee",
                 approved_request_id=request_id,
             )
-            return redirect(url_for("access_request_card", request_id=request_id, message="Заявка одобрена, доступ создан"))
+            enqueue_web_notification(
+                notification_type="access_approved",
+                discord_id=int(item["discord_id"]),
+                title="✅ Доступ в веб-портал одобрен",
+                message=(
+                    f"Здравствуйте, {item['fio']}!\n\n"
+                    f"Вам одобрен доступ в веб-портал СУ СК.\n\n"
+                    f"Ваш Discord ID для входа: {item['discord_id']}\n"
+                    f"Ваш временный пароль: {password}\n\n"
+                    f"Раздел сотрудников: /staff-login"
+                ),
+                payload={
+                    "request_id": request_id,
+                    "discord_id": int(item["discord_id"]),
+                    "fio": item["fio"],
+                    "department": item["department"],
+                },
+            )
+            return redirect(url_for("access_request_card", request_id=request_id, message=f"Заявка одобрена. Пароль отправлен ботом в ЛС. Резервный пароль: {password}"))
 
         if action == "reject":
             update_access_request_status(
