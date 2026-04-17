@@ -1,3 +1,4 @@
+
 import os
 from functools import wraps
 from pathlib import Path
@@ -108,6 +109,22 @@ def filter_access_requests(requests_list, status="", fio="", department=""):
     if department:
         result = [x for x in result if (x.get("department") or "") == department]
     return result
+
+
+def get_latest_access_request_by_discord_id(discord_id: int):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT * FROM web_access_requests
+                WHERE discord_id = %s
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (discord_id,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
 
 
 def get_staff_current_user():
@@ -591,7 +608,7 @@ def staff_login():
     <body>
         <div class="card">
             <h1>👥 Раздел сотрудников</h1>
-            <p>Вход для сотрудников с уже одобренным доступом.</p>
+            <p>Вход для сотрудников с уже одобренным доступом. После одобрения заявки используйте здесь свой Discord ID и пароль, который вам выдали.</p>
             <form method="post">
                 <input type="text" name="discord_id" placeholder="Discord ID" required>
                 <input type="password" name="password" placeholder="Пароль" required>
@@ -613,6 +630,7 @@ def staff_login():
 def request_access():
     error = ""
     success = ""
+    approved_login_hint = False
 
     if request.method == "POST":
         discord_id = request.form.get("discord_id", "").strip()
@@ -626,14 +644,27 @@ def request_access():
         elif not fio or not department or not position or not reason:
             error = "Заполните все поля формы."
         else:
-            create_web_access_request(
-                discord_id=int(discord_id),
-                fio=fio,
-                department=department,
-                position=position,
-                reason=reason,
-            )
-            success = "Заявка отправлена руководству. Ожидайте одобрения."
+            discord_id_int = int(discord_id)
+            existing_user = get_web_user_by_discord_id(discord_id_int)
+            latest_request = get_latest_access_request_by_discord_id(discord_id_int)
+
+            if existing_user and int(existing_user.get("is_active") or 0) == 1:
+                success = "Доступ уже одобрен. Используйте вход в раздел сотрудников."
+                approved_login_hint = True
+            elif latest_request and (latest_request.get("status") or "") == "Новая":
+                success = "Заявка уже отправлена и ожидает рассмотрения руководством."
+            elif latest_request and (latest_request.get("status") or "") == "Одобрено":
+                success = "Заявка уже одобрена. Используйте вход в раздел сотрудников."
+                approved_login_hint = True
+            else:
+                create_web_access_request(
+                    discord_id=discord_id_int,
+                    fio=fio,
+                    department=department,
+                    position=position,
+                    reason=reason,
+                )
+                success = "Заявка отправлена руководству. Ожидайте одобрения."
 
     template = """
     <!doctype html>
@@ -690,13 +721,14 @@ def request_access():
 
             {% if error %}<div class="msg-err">{{ error }}</div>{% endif %}
             {% if success %}<div class="msg-ok">{{ success }}</div>{% endif %}
+            {% if approved_login_hint %}<a href="/staff-login">Перейти ко входу сотрудников</a>{% endif %}
 
             <a href="/">← На главную</a>
         </div>
     </body>
     </html>
     """
-    return render_template_string(template, error=error, success=success)
+    return render_template_string(template, error=error, success=success, approved_login_hint=approved_login_hint)
 
 
 @app.route("/to-leadership")
