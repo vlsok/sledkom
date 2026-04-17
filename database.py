@@ -57,6 +57,7 @@ def backup_database() -> str:
 def init_db() -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
+            # Base tables
             cur.execute("""
             CREATE TABLE IF NOT EXISTS appeals (
                 id SERIAL PRIMARY KEY,
@@ -152,6 +153,7 @@ def init_db() -> None:
             )
             """)
 
+            # Web access system
             cur.execute("""
             CREATE TABLE IF NOT EXISTS web_access_requests (
                 id SERIAL PRIMARY KEY,
@@ -194,21 +196,34 @@ def init_db() -> None:
                 sent_at TEXT
             )
             """)
+
+            # Migration-safe ALTERs for old DBs
+            cur.execute("ALTER TABLE web_access_requests ADD COLUMN IF NOT EXISTS reviewed_by BIGINT")
+            cur.execute("ALTER TABLE web_access_requests ADD COLUMN IF NOT EXISTS reviewed_by_name TEXT")
+            cur.execute("ALTER TABLE web_access_requests ADD COLUMN IF NOT EXISTS approved_password TEXT")
+            cur.execute("ALTER TABLE web_access_requests ADD COLUMN IF NOT EXISTS reviewed_at TEXT")
+            cur.execute("ALTER TABLE web_access_requests ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Новая'")
+
+            cur.execute("ALTER TABLE web_users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'employee'")
+            cur.execute("ALTER TABLE web_users ADD COLUMN IF NOT EXISTS password TEXT")
+            cur.execute("ALTER TABLE web_users ADD COLUMN IF NOT EXISTS is_active INTEGER DEFAULT 1")
+            cur.execute("ALTER TABLE web_users ADD COLUMN IF NOT EXISTS created_at TEXT")
+
+            # Fill nulls after migrations
+            cur.execute("UPDATE web_users SET role = COALESCE(role, 'employee')")
+            cur.execute("UPDATE web_users SET is_active = COALESCE(is_active, 1)")
+            cur.execute("UPDATE web_access_requests SET status = COALESCE(status, 'Новая')")
+
         conn.commit()
 
 
 def generate_number(prefix: str, table: str, year: int | None = None) -> str:
     if year is None:
         year = datetime.now().year
-
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                f"SELECT COUNT(*) AS count FROM {table} WHERE number LIKE %s",
-                (f"{prefix}/{year}/%",),
-            )
+            cur.execute(f"SELECT COUNT(*) AS count FROM {table} WHERE number LIKE %s", (f"{prefix}/{year}/%",))
             count = cur.fetchone()["count"] + 1
-
     return f"{prefix}/{year}/{count:03d}"
 
 
@@ -224,19 +239,11 @@ def generate_discipline_number() -> str:
     return generate_number("ДИС-ЛО", "discipline_records")
 
 
-def add_appeal_history(
-    appeal_number: str,
-    action: str,
-    actor_id: Optional[int] = None,
-    actor_name: Optional[str] = None,
-    details: Optional[str] = None,
-) -> None:
+def add_appeal_history(appeal_number: str, action: str, actor_id: Optional[int] = None, actor_name: Optional[str] = None, details: Optional[str] = None) -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-            INSERT INTO appeal_history (
-                appeal_number, action, actor_id, actor_name, details, created_at
-            )
+            INSERT INTO appeal_history (appeal_number, action, actor_id, actor_name, details, created_at)
             VALUES (%s, %s, %s, %s, %s, %s)
             """, (appeal_number, action, actor_id, actor_name, details, now_str()))
         conn.commit()
@@ -244,10 +251,7 @@ def add_appeal_history(
 
 def determine_department(appeal_type: str, description: str) -> str:
     text = f"{appeal_type} {description}".lower()
-    military_words = [
-        "военный", "всо", "воинская часть", "армия",
-        "военнослужащ", "контрактник", "солдат", "офицер"
-    ]
+    military_words = ["военный", "всо", "воинская часть", "армия", "военнослужащ", "контрактник", "солдат", "офицер"]
     return "ВСО" if any(word in text for word in military_words) else "СО"
 
 
@@ -265,7 +269,6 @@ def create_appeal(user_id: int, username: str, appeal_type: str, fio: str, conta
     department = determine_department(appeal_type, description)
     priority = determine_priority(description)
     created_at = now_str()
-
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -282,7 +285,6 @@ def create_appeal(user_id: int, username: str, appeal_type: str, fio: str, conta
                 0, None, None, None, None, 0, None, None, created_at, created_at, None
             ))
         conn.commit()
-
     add_appeal_history(number, "Создано обращение", user_id, username, f"Тип: {appeal_type} / Приоритет: {priority}")
     return get_appeal_by_number(number)
 
@@ -305,35 +307,21 @@ def get_recent_appeals(limit: int = 20) -> list[dict]:
 def get_appeal_history(number: str, limit: int = 20) -> list[dict]:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-            SELECT * FROM appeal_history
-            WHERE appeal_number = %s
-            ORDER BY id DESC
-            LIMIT %s
-            """, (number, limit))
+            cur.execute("SELECT * FROM appeal_history WHERE appeal_number = %s ORDER BY id DESC LIMIT %s", (number, limit))
             return [dict(row) for row in cur.fetchall()]
 
 
 def get_active_appeals(limit: int = 50) -> list[dict]:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-            SELECT * FROM appeals
-            WHERE archive_flag = 0
-            ORDER BY id DESC
-            LIMIT %s
-            """, (limit,))
+            cur.execute("SELECT * FROM appeals WHERE archive_flag = 0 ORDER BY id DESC LIMIT %s", (limit,))
             return [dict(row) for row in cur.fetchall()]
 
 
 def count_appeals_by_status(status: str) -> int:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-            SELECT COUNT(*) AS count
-            FROM appeals
-            WHERE status = %s AND archive_flag = 0
-            """, (status,))
+            cur.execute("SELECT COUNT(*) AS count FROM appeals WHERE status = %s AND archive_flag = 0", (status,))
             return cur.fetchone()["count"]
 
 
@@ -373,11 +361,7 @@ def set_appeal_assigned_to(number: str, assigned_to: int) -> None:
 def set_appeal_clarification(number: str, text: str, actor_id: int, actor_name: str) -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-            UPDATE appeals
-            SET status = %s, clarification_requested = 1, clarification_text = %s, updated_at = %s
-            WHERE number = %s
-            """, ("Требует уточнения", text, now_str(), number))
+            cur.execute("UPDATE appeals SET status = %s, clarification_requested = 1, clarification_text = %s, updated_at = %s WHERE number = %s", ("Требует уточнения", text, now_str(), number))
         conn.commit()
     add_appeal_history(number, "Запрошено уточнение", actor_id, actor_name, text)
 
@@ -385,11 +369,7 @@ def set_appeal_clarification(number: str, text: str, actor_id: int, actor_name: 
 def set_citizen_reply(number: str, reply_text: str, user_id: int, username: str) -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-            UPDATE appeals
-            SET citizen_reply_text = %s, citizen_reply_at = %s, updated_at = %s, status = %s
-            WHERE number = %s
-            """, (reply_text, now_str(), now_str(), "В работе", number))
+            cur.execute("UPDATE appeals SET citizen_reply_text = %s, citizen_reply_at = %s, updated_at = %s, status = %s WHERE number = %s", (reply_text, now_str(), now_str(), "В работе", number))
         conn.commit()
     add_appeal_history(number, "Поступил ответ на уточнение", user_id, username, reply_text)
 
@@ -398,11 +378,7 @@ def close_appeal(number: str, status: str, resolution_text: str, actor_id: int, 
     appeal = get_appeal_by_number(number)
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-            UPDATE appeals
-            SET status = %s, resolution_text = %s, updated_at = %s, closed_at = %s
-            WHERE number = %s
-            """, (status, resolution_text, now_str(), now_str(), number))
+            cur.execute("UPDATE appeals SET status = %s, resolution_text = %s, updated_at = %s, closed_at = %s WHERE number = %s", (status, resolution_text, now_str(), now_str(), number))
             if appeal and appeal.get("assigned_to"):
                 cur.execute("UPDATE employees SET closed_cases_count = closed_cases_count + 1 WHERE discord_id = %s", (appeal["assigned_to"],))
         conn.commit()
@@ -412,11 +388,7 @@ def close_appeal(number: str, status: str, resolution_text: str, actor_id: int, 
 def archive_appeal(number: str, actor_id: int, actor_name: str) -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-            UPDATE appeals
-            SET status = %s, archive_flag = 1, updated_at = %s, closed_at = %s
-            WHERE number = %s
-            """, ("Архив", now_str(), now_str(), number))
+            cur.execute("UPDATE appeals SET status = %s, archive_flag = 1, updated_at = %s, closed_at = %s WHERE number = %s", ("Архив", now_str(), now_str(), number))
         conn.commit()
     add_appeal_history(number, "Обращение архивировано", actor_id, actor_name, "Карточка отправлена в архив")
 
@@ -428,10 +400,9 @@ def create_hr_request(user_id: int, username: str, fio: str, age: str, experienc
         with conn.cursor() as cur:
             cur.execute("""
             INSERT INTO hr_requests (
-                number, user_id, username, fio, age, experience, reason,
-                status, log_message_id, processed_by, processed_by_name, created_at, updated_at
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                number, user_id, username, fio, age, experience, reason, status,
+                log_message_id, processed_by, processed_by_name, created_at, updated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (number, user_id, username, fio, age, experience, reason, "На рассмотрении", None, None, None, created_at, created_at))
         conn.commit()
     return get_hr_request_by_number(number)
@@ -462,16 +433,11 @@ def set_hr_log_message_id(number: str, message_id: int) -> None:
 def update_hr_status(number: str, status: str, processed_by: int, processed_by_name: str) -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-            UPDATE hr_requests
-            SET status = %s, processed_by = %s, processed_by_name = %s, updated_at = %s
-            WHERE number = %s
-            """, (status, processed_by, processed_by_name, now_str(), number))
+            cur.execute("UPDATE hr_requests SET status = %s, processed_by = %s, processed_by_name = %s, updated_at = %s WHERE number = %s", (status, processed_by, processed_by_name, now_str(), number))
         conn.commit()
 
 
-def create_employee(discord_id: int, fio: str, department: str = "СО", position: str = "Стажёр",
-                    rank_name: str = "Младший лейтенант юстиции", probation_days: int = 5) -> dict:
+def create_employee(discord_id: int, fio: str, department: str = "СО", position: str = "Стажёр", rank_name: str = "Младший лейтенант юстиции", probation_days: int = 5) -> dict:
     joined_at = now_str()
     probation_until = (datetime.now() + timedelta(days=probation_days)).strftime("%d.%m.%Y %H:%M:%S")
     with get_connection() as conn:
@@ -481,8 +447,7 @@ def create_employee(discord_id: int, fio: str, department: str = "СО", positio
                 discord_id, fio, department, position, rank_name, status,
                 joined_at, probation_until, cases_count, closed_cases_count,
                 warnings_count, promotions_count, rewards_count, notes
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (discord_id) DO UPDATE SET
                 fio = EXCLUDED.fio,
                 department = EXCLUDED.department,
@@ -513,8 +478,7 @@ def upsert_employee_from_web(discord_id: int, fio: str, department: str, positio
                 discord_id, fio, department, position, rank_name, status,
                 joined_at, probation_until, cases_count, closed_cases_count,
                 warnings_count, promotions_count, rewards_count, notes
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (discord_id) DO UPDATE SET
                 fio = EXCLUDED.fio,
                 department = EXCLUDED.department,
@@ -586,9 +550,7 @@ def add_discipline_record(discord_id: int, fio: str, action_type: str, reason: s
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-            INSERT INTO discipline_records (
-                number, discord_id, fio, action_type, reason, issued_by, issued_by_name, created_at
-            )
+            INSERT INTO discipline_records (number, discord_id, fio, action_type, reason, issued_by, issued_by_name, created_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """, (number, discord_id, fio, action_type, reason, issued_by, issued_by_name, created_at))
             if action_type in ("Выговор", "Строгий выговор", "Предупреждение"):
@@ -624,17 +586,13 @@ def get_due_probations() -> list[dict]:
     return result
 
 
-# =========================
-# WEB ACCESS REQUESTS
-# =========================
+# WEB ACCESS
 
 def create_web_access_request(discord_id: int, fio: str, department: str, position: str, reason: str) -> dict:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-            INSERT INTO web_access_requests (
-                discord_id, fio, department, position, reason, status, created_at
-            )
+            INSERT INTO web_access_requests (discord_id, fio, department, position, reason, status, created_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING *
             """, (discord_id, fio, department, position, reason, "Новая", now_str()))
@@ -661,12 +619,7 @@ def get_recent_web_access_requests(limit: int = 100) -> list[dict]:
 def get_latest_web_access_request_by_discord_id(discord_id: int) -> Optional[dict]:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-            SELECT * FROM web_access_requests
-            WHERE discord_id = %s
-            ORDER BY id DESC
-            LIMIT 1
-            """, (discord_id,))
+            cur.execute("SELECT * FROM web_access_requests WHERE discord_id = %s ORDER BY id DESC LIMIT 1", (discord_id,))
             row = cur.fetchone()
             return dict(row) if row else None
 
@@ -700,6 +653,33 @@ def create_or_update_web_user(discord_id: int, fio: str, department: str, passwo
             row = cur.fetchone()
         conn.commit()
     return dict(row)
+
+
+def enqueue_web_notification(discord_id: int, notification_type: str, title: str, message: str) -> dict:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            INSERT INTO web_notifications (discord_id, notification_type, title, message, status, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING *
+            """, (discord_id, notification_type, title, message, "pending", now_str()))
+            row = cur.fetchone()
+        conn.commit()
+    return dict(row)
+
+
+def get_pending_web_notifications(limit: int = 20) -> list[dict]:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM web_notifications WHERE status = 'pending' ORDER BY id ASC LIMIT %s", (limit,))
+            return [dict(row) for row in cur.fetchall()]
+
+
+def mark_web_notification_sent(notification_id: int) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE web_notifications SET status = %s, sent_at = %s WHERE id = %s", ("sent", now_str(), notification_id))
+        conn.commit()
 
 
 def approve_web_access_request(request_id: int, reviewed_by: int = 0, reviewed_by_name: str = "WEB_PANEL") -> dict | None:
@@ -769,10 +749,7 @@ def get_web_user_by_discord_id(discord_id: int) -> Optional[dict]:
 def authenticate_web_user(discord_id: int, password: str) -> Optional[dict]:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-            SELECT * FROM web_users
-            WHERE discord_id = %s AND password = %s AND is_active = 1
-            """, (discord_id, password))
+            cur.execute("SELECT * FROM web_users WHERE discord_id = %s AND password = %s AND is_active = 1", (discord_id, password))
             row = cur.fetchone()
             return dict(row) if row else None
 
@@ -782,69 +759,3 @@ def get_all_web_users(limit: int = 200) -> list[dict]:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM web_users ORDER BY id DESC LIMIT %s", (limit,))
             return [dict(row) for row in cur.fetchall()]
-
-
-# =========================
-# BOT NOTIFICATIONS
-# =========================
-
-def enqueue_web_notification(discord_id: int, notification_type: str, title: str, message: str) -> dict:
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-            INSERT INTO web_notifications (
-                discord_id, notification_type, title, message, status, created_at
-            )
-            VALUES (%s, %s, %s, %s, %s, %s)
-            RETURNING *
-            """, (discord_id, notification_type, title, message, "pending", now_str()))
-            row = cur.fetchone()
-        conn.commit()
-    return dict(row)
-
-
-def get_pending_web_notifications(limit: int = 20) -> list[dict]:
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-            SELECT * FROM web_notifications
-            WHERE status = 'pending'
-            ORDER BY id ASC
-            LIMIT %s
-            """, (limit,))
-            return [dict(row) for row in cur.fetchall()]
-
-
-def mark_web_notification_sent(notification_id: int) -> None:
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-            UPDATE web_notifications
-            SET status = %s, sent_at = %s
-            WHERE id = %s
-            """, ("sent", now_str(), notification_id))
-        conn.commit()
-
-
-# =========================
-# COMPATIBILITY ALIASES
-# =========================
-
-def get_recent_access_requests(limit: int = 100) -> list[dict]:
-    return get_recent_web_access_requests(limit)
-
-
-def get_access_request(request_id: int) -> Optional[dict]:
-    return get_web_access_request(request_id)
-
-
-def count_access_requests_by_status(status: str) -> int:
-    return count_web_access_requests_by_status(status)
-
-
-def approve_access_request(request_id: int, reviewed_by: int = 0, reviewed_by_name: str = "WEB_PANEL") -> dict | None:
-    return approve_web_access_request(request_id, reviewed_by, reviewed_by_name)
-
-
-def reject_access_request(request_id: int, reviewed_by: int = 0, reviewed_by_name: str = "WEB_PANEL") -> dict | None:
-    return reject_web_access_request(request_id, reviewed_by, reviewed_by_name)
