@@ -64,6 +64,8 @@ from database import (
     add_discipline_record,
     get_due_probations,
     backup_database,
+    get_pending_web_notifications,
+    mark_web_notification_sent,
 )
 
 # =========================
@@ -1834,6 +1836,34 @@ async def check_probations():
         log_exception("check_probations", e)
 
 
+
+
+@tasks.loop(minutes=1)
+async def process_web_notifications():
+    try:
+        notifications = get_pending_web_notifications(20)
+        if not notifications:
+            return
+
+        for item in notifications:
+            try:
+                user = await bot.fetch_user(int(item["discord_id"]))
+                embed = disnake.Embed(
+                    title=item.get("title", "Уведомление"),
+                    description=item.get("message", ""),
+                    color=disnake.Color.blue(),
+                )
+                style_embed(embed)
+                await user.send(embed=embed)
+                mark_web_notification_sent(int(item["id"]))
+                logger.info("WEB notification sent to %s (%s)", user, item["discord_id"])
+            except Exception as inner_exc:
+                log_exception("process_web_notifications.send", inner_exc)
+                mark_web_notification_sent(int(item["id"]), error_text=str(inner_exc))
+    except Exception as e:
+        log_exception("process_web_notifications", e)
+
+
 # =========================
 # EVENTS
 # =========================
@@ -1848,6 +1878,8 @@ async def on_ready():
             check_stuck_appeals.start()
         if not check_probations.is_running():
             check_probations.start()
+        if not process_web_notifications.is_running():
+            process_web_notifications.start()
 
         guild = bot.get_guild(GUILD_ID)
         if guild:
