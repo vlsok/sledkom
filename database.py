@@ -45,8 +45,11 @@ def backup_database() -> str:
     with get_connection() as conn:
         with conn.cursor() as cur:
             for table in tables:
-                cur.execute(f"SELECT * FROM {table}")
-                dump["tables"][table] = list(cur.fetchall())
+                try:
+                    cur.execute(f"SELECT * FROM {table}")
+                    dump["tables"][table] = list(cur.fetchall())
+                except Exception:
+                    dump["tables"][table] = []
 
     with open(backup_path, "w", encoding="utf-8") as f:
         json.dump(dump, f, ensure_ascii=False, indent=2, default=str)
@@ -57,7 +60,6 @@ def backup_database() -> str:
 def init_db() -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            # Base tables
             cur.execute("""
             CREATE TABLE IF NOT EXISTS appeals (
                 id SERIAL PRIMARY KEY,
@@ -153,7 +155,6 @@ def init_db() -> None:
             )
             """)
 
-            # Web access system
             cur.execute("""
             CREATE TABLE IF NOT EXISTS web_access_requests (
                 id SERIAL PRIMARY KEY,
@@ -171,16 +172,19 @@ def init_db() -> None:
             )
             """)
 
+            # legacy-compatible web_users
             cur.execute("""
             CREATE TABLE IF NOT EXISTS web_users (
                 id SERIAL PRIMARY KEY,
                 discord_id BIGINT NOT NULL UNIQUE,
                 fio TEXT NOT NULL,
                 department TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
                 role TEXT NOT NULL DEFAULT 'employee',
-                password TEXT NOT NULL,
+                password TEXT,
                 is_active INTEGER NOT NULL DEFAULT 1,
-                created_at TEXT NOT NULL
+                created_at TEXT,
+                notes TEXT
             )
             """)
 
@@ -197,7 +201,7 @@ def init_db() -> None:
             )
             """)
 
-            # Migration-safe ALTERs for old DBs
+            # migration-safe alters
             cur.execute("ALTER TABLE web_access_requests ADD COLUMN IF NOT EXISTS reviewed_by BIGINT")
             cur.execute("ALTER TABLE web_access_requests ADD COLUMN IF NOT EXISTS reviewed_by_name TEXT")
             cur.execute("ALTER TABLE web_access_requests ADD COLUMN IF NOT EXISTS approved_password TEXT")
@@ -206,12 +210,16 @@ def init_db() -> None:
 
             cur.execute("ALTER TABLE web_users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'employee'")
             cur.execute("ALTER TABLE web_users ADD COLUMN IF NOT EXISTS password TEXT")
+            cur.execute("ALTER TABLE web_users ADD COLUMN IF NOT EXISTS password_hash TEXT")
             cur.execute("ALTER TABLE web_users ADD COLUMN IF NOT EXISTS is_active INTEGER DEFAULT 1")
             cur.execute("ALTER TABLE web_users ADD COLUMN IF NOT EXISTS created_at TEXT")
+            cur.execute("ALTER TABLE web_users ADD COLUMN IF NOT EXISTS notes TEXT")
 
-            # Fill nulls after migrations
             cur.execute("UPDATE web_users SET role = COALESCE(role, 'employee')")
             cur.execute("UPDATE web_users SET is_active = COALESCE(is_active, 1)")
+            cur.execute("UPDATE web_users SET created_at = COALESCE(created_at, %s)", (now_str(),))
+            cur.execute("UPDATE web_users SET password_hash = COALESCE(password_hash, password, 'TEMP_PASSWORD')")
+
             cur.execute("UPDATE web_access_requests SET status = COALESCE(status, 'Новая')")
 
         conn.commit()
@@ -640,16 +648,20 @@ def create_or_update_web_user(discord_id: int, fio: str, department: str, passwo
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-            INSERT INTO web_users (discord_id, fio, department, role, password, is_active, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO web_users (
+                discord_id, fio, department, password_hash, role, password, is_active, created_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (discord_id) DO UPDATE SET
                 fio = EXCLUDED.fio,
                 department = EXCLUDED.department,
+                password_hash = EXCLUDED.password_hash,
                 role = EXCLUDED.role,
                 password = EXCLUDED.password,
-                is_active = EXCLUDED.is_active
+                is_active = EXCLUDED.is_active,
+                created_at = COALESCE(web_users.created_at, EXCLUDED.created_at)
             RETURNING *
-            """, (discord_id, fio, department, role, password, 1, now_str()))
+            """, (discord_id, fio, department, password, role, password, 1, now_str()))
             row = cur.fetchone()
         conn.commit()
     return dict(row)
@@ -749,7 +761,12 @@ def get_web_user_by_discord_id(discord_id: int) -> Optional[dict]:
 def authenticate_web_user(discord_id: int, password: str) -> Optional[dict]:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM web_users WHERE discord_id = %s AND password = %s AND is_active = 1", (discord_id, password))
+            cur.execute("""
+            SELECT * FROM web_users
+            WHERE discord_id = %s
+              AND is_active = 1
+              AND (password = %s OR password_hash = %s)
+            """, (discord_id, password, password))
             row = cur.fetchone()
             return dict(row) if row else None
 
