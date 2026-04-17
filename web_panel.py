@@ -59,15 +59,17 @@ def login_required(func):
 
 def load_discipline_records(limit: int = 200):
     with get_connection() as conn:
-        rows = conn.execute(
-            """
-            SELECT * FROM discipline_records
-            ORDER BY id DESC
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
-        return [dict(x) for x in rows]
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT * FROM discipline_records
+                ORDER BY id DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = cur.fetchall()
+            return [dict(x) for x in rows]
 
 
 def filter_discipline(records, fio="", action_type=""):
@@ -196,58 +198,62 @@ def save_department_chart(employees):
 
 def get_appeal_history_for_page(number: str):
     with get_connection() as conn:
-        rows = conn.execute(
-            """
-            SELECT * FROM appeal_history
-            WHERE appeal_number = ?
-            ORDER BY id DESC
-            LIMIT 30
-            """,
-            (number,),
-        ).fetchall()
-        return [dict(x) for x in rows]
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT * FROM appeal_history
+                WHERE appeal_number = %s
+                ORDER BY id DESC
+                LIMIT 30
+                """,
+                (number,),
+            )
+            rows = cur.fetchall()
+            return [dict(x) for x in rows]
 
 
 def add_web_history(appeal_number: str, action: str, details: str):
     with get_connection() as conn:
-        conn.execute(
-            """
-            INSERT INTO appeal_history (
-                appeal_number, action, actor_id, actor_name, details, created_at
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO appeal_history (
+                    appeal_number, action, actor_id, actor_name, details, created_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (appeal_number, action, 0, "WEB_PANEL", details, __import__("datetime").datetime.now().strftime("%d.%m.%Y %H:%M:%S")),
             )
-            VALUES (?, ?, ?, ?, ?, datetime('now'))
-            """,
-            (appeal_number, action, 0, "WEB_PANEL", details),
-        )
         conn.commit()
 
 
 def update_appeal_from_web(number: str, form: dict):
     with get_connection() as conn:
-        conn.execute(
-            """
-            UPDATE appeals
-            SET
-                status = ?,
-                department = ?,
-                priority = ?,
-                assigned_to = ?,
-                clarification_text = ?,
-                resolution_text = ?,
-                updated_at = ?
-            WHERE number = ?
-            """,
-            (
-                form.get("status", "").strip(),
-                form.get("department", "").strip(),
-                form.get("priority", "").strip(),
-                int(form["assigned_to"]) if form.get("assigned_to", "").strip().isdigit() else None,
-                form.get("clarification_text", "").strip() or None,
-                form.get("resolution_text", "").strip() or None,
-                __import__("datetime").datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
-                number,
-            ),
-        )
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE appeals
+                SET
+                    status = %s,
+                    department = %s,
+                    priority = %s,
+                    assigned_to = %s,
+                    clarification_text = %s,
+                    resolution_text = %s,
+                    updated_at = %s
+                WHERE number = %s
+                """,
+                (
+                    form.get("status", "").strip(),
+                    form.get("department", "").strip(),
+                    form.get("priority", "").strip(),
+                    int(form["assigned_to"]) if form.get("assigned_to", "").strip().isdigit() else None,
+                    form.get("clarification_text", "").strip() or None,
+                    form.get("resolution_text", "").strip() or None,
+                    __import__("datetime").datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
+                    number,
+                ),
+            )
         conn.commit()
 
     add_web_history(
@@ -652,11 +658,12 @@ def render_page(title: str, content: str, active: str = "dashboard"):
                 </div>
 
                 <nav class="nav">
-                    <a href="/" class="{{ 'active' if active == 'dashboard' else '' }}">📊 Дашборд</a>
+                    <a href="/admin" class="{{ 'active' if active == 'dashboard' else '' }}">📊 Дашборд</a>
                     <a href="/appeals" class="{{ 'active' if active == 'appeals' else '' }}">📨 Обращения</a>
                     <a href="/employees" class="{{ 'active' if active == 'employees' else '' }}">👥 Кадры</a>
                     <a href="/analytics" class="{{ 'active' if active == 'analytics' else '' }}">📈 Аналитика</a>
                     <a href="/discipline" class="{{ 'active' if active == 'discipline' else '' }}">⚖️ Дисциплина</a>
+                    <a href="/">🏠 На главную</a>
                     <a href="/logout">🚪 Выход</a>
                 </nav>
 
@@ -674,7 +681,7 @@ def render_page(title: str, content: str, active: str = "dashboard"):
                         <form method="post" action="/backup" style="margin:0;">
                             <button class="btn" type="submit">💾 Бэкап базы</button>
                         </form>
-                        <a class="btn secondary" href="/">↻ Обновить</a>
+                        <a class="btn secondary" href="/admin">↻ Обновить</a>
                     </div>
                 </div>
 
@@ -691,6 +698,372 @@ def render_page(title: str, content: str, active: str = "dashboard"):
     </html>
     """
     return render_template_string(template, title=title, content=content, active=active, message=message)
+
+
+# =========================
+# PUBLIC
+# =========================
+
+@app.route("/")
+def public_index():
+    template = """
+    <!doctype html>
+    <html lang="ru">
+    <head>
+        <meta charset="utf-8">
+        <title>СУ СК — Портал</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            :root {
+                --bg1:#08111f;
+                --bg2:#0f172a;
+                --bg3:#111827;
+                --card:#182235;
+                --line:#334155;
+                --text:#e5e7eb;
+                --muted:#94a3b8;
+                --blue:#2563eb;
+                --blue2:#1d4ed8;
+                --shadow:0 16px 35px rgba(0,0,0,.30);
+                --radius:24px;
+            }
+
+            * { box-sizing:border-box; }
+
+            body {
+                margin:0;
+                font-family:Arial, sans-serif;
+                color:var(--text);
+                background:
+                    radial-gradient(circle at top right, rgba(37,99,235,0.16), transparent 20%),
+                    radial-gradient(circle at top left, rgba(124,58,237,0.12), transparent 18%),
+                    linear-gradient(135deg, var(--bg1), var(--bg2), var(--bg3));
+                min-height:100vh;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                padding:24px;
+            }
+
+            .shell {
+                width:100%;
+                max-width:1100px;
+            }
+
+            .hero {
+                text-align:center;
+                margin-bottom:26px;
+            }
+
+            .hero h1 {
+                font-size:40px;
+                margin:0 0 12px 0;
+            }
+
+            .hero p {
+                margin:0 auto;
+                max-width:720px;
+                color:var(--muted);
+                line-height:1.6;
+                font-size:16px;
+            }
+
+            .grid {
+                display:grid;
+                grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));
+                gap:20px;
+            }
+
+            .card {
+                background:linear-gradient(180deg, rgba(24,34,53,.98), rgba(19,28,44,.98));
+                border:1px solid rgba(148,163,184,.08);
+                border-radius:var(--radius);
+                padding:24px;
+                box-shadow:var(--shadow);
+            }
+
+            .card h3 {
+                margin:0 0 12px 0;
+                font-size:22px;
+            }
+
+            .card p {
+                margin:0 0 20px 0;
+                color:var(--muted);
+                line-height:1.6;
+                min-height:90px;
+            }
+
+            .btn {
+                display:inline-block;
+                padding:12px 18px;
+                border-radius:14px;
+                background:var(--blue);
+                color:white;
+                text-decoration:none;
+                font-weight:bold;
+            }
+
+            .btn:hover {
+                background:var(--blue2);
+            }
+
+            .note {
+                margin-top:24px;
+                text-align:center;
+                color:var(--muted);
+                font-size:14px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="shell">
+            <div class="hero">
+                <h1>👑 СУ СК — Веб-портал</h1>
+                <p>
+                    Единый портал для руководства, сотрудников и обращений напрямую руководителю.
+                    Выберите нужный раздел ниже.
+                </p>
+            </div>
+
+            <div class="grid">
+                <div class="card">
+                    <h3>🔐 Мой раздел</h3>
+                    <p>
+                        Вход в закрытую административную панель.
+                        Дашборд, обращения, кадры, аналитика, дисциплина и управление системой.
+                    </p>
+                    <a class="btn" href="/login">Открыть раздел</a>
+                </div>
+
+                <div class="card">
+                    <h3>👥 Раздел сотрудников</h3>
+                    <p>
+                        Кабинет сотрудника: вход, личные данные, документы, служебные обращения
+                        и взаимодействие через веб-портал.
+                    </p>
+                    <a class="btn" href="/staff-login">Перейти</a>
+                </div>
+
+                <div class="card">
+                    <h3>📨 Напрямую руководству</h3>
+                    <p>
+                        Отправка обращения напрямую руководству организации. Здесь можно оставить
+                        сообщение и в следующих этапах прикладывать документы и материалы.
+                    </p>
+                    <a class="btn" href="/to-leadership">Открыть форму</a>
+                </div>
+            </div>
+
+            <div class="note">
+                Доступ сотрудников и формы будут доработаны на следующем этапе.
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return render_template_string(template)
+
+
+@app.route("/staff-login")
+def staff_login():
+    template = """
+    <!doctype html>
+    <html lang="ru">
+    <head>
+        <meta charset="utf-8">
+        <title>Раздел сотрудников</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body {
+                margin:0;
+                font-family:Arial,sans-serif;
+                background:linear-gradient(135deg,#08111f,#0f172a,#111827);
+                color:#e5e7eb;
+                min-height:100vh;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                padding:24px;
+            }
+            .card {
+                width:100%;
+                max-width:560px;
+                background:linear-gradient(180deg, rgba(24,34,53,.98), rgba(19,28,44,.98));
+                border:1px solid rgba(148,163,184,.08);
+                border-radius:24px;
+                padding:26px;
+                box-shadow:0 16px 35px rgba(0,0,0,.30);
+            }
+            h1 { margin:0 0 12px 0; }
+            p { color:#94a3b8; line-height:1.6; }
+            .actions { display:flex; gap:12px; flex-wrap:wrap; margin-top:18px; }
+            a {
+                display:inline-block;
+                padding:12px 16px;
+                border-radius:12px;
+                background:#2563eb;
+                color:white;
+                text-decoration:none;
+                font-weight:bold;
+            }
+            a.secondary { background:#334155; }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h1>👥 Раздел сотрудников</h1>
+            <p>
+                Этот раздел будет использоваться для входа сотрудников, у которых уже есть одобренный доступ.
+                На следующем этапе здесь появятся форма входа и личный кабинет.
+            </p>
+            <div class="actions">
+                <a href="/request-access">Запросить доступ</a>
+                <a class="secondary" href="/">На главную</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return render_template_string(template)
+
+
+@app.route("/request-access")
+def request_access():
+    template = """
+    <!doctype html>
+    <html lang="ru">
+    <head>
+        <meta charset="utf-8">
+        <title>Запрос доступа</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body {
+                margin:0;
+                font-family:Arial,sans-serif;
+                background:linear-gradient(135deg,#08111f,#0f172a,#111827);
+                color:#e5e7eb;
+                min-height:100vh;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                padding:24px;
+            }
+            .card {
+                width:100%;
+                max-width:640px;
+                background:linear-gradient(180deg, rgba(24,34,53,.98), rgba(19,28,44,.98));
+                border:1px solid rgba(148,163,184,.08);
+                border-radius:24px;
+                padding:26px;
+                box-shadow:0 16px 35px rgba(0,0,0,.30);
+            }
+            h1 { margin:0 0 12px 0; }
+            p { color:#94a3b8; line-height:1.6; }
+            .info {
+                margin-top:16px;
+                padding:14px;
+                border-radius:14px;
+                background:rgba(37,99,235,.16);
+                border:1px solid rgba(96,165,250,.18);
+            }
+            a {
+                display:inline-block;
+                margin-top:18px;
+                padding:12px 16px;
+                border-radius:12px;
+                background:#334155;
+                color:white;
+                text-decoration:none;
+                font-weight:bold;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h1>📝 Запрос доступа сотрудника</h1>
+            <p>
+                На следующем этапе здесь будет полноценная форма заявки на доступ по Discord ID
+                с одобрением руководителем.
+            </p>
+            <div class="info">
+                Планируемые поля: ФИО, Discord ID, подразделение, должность, причина запроса доступа.
+            </div>
+            <a href="/">На главную</a>
+        </div>
+    </body>
+    </html>
+    """
+    return render_template_string(template)
+
+
+@app.route("/to-leadership")
+def to_leadership():
+    template = """
+    <!doctype html>
+    <html lang="ru">
+    <head>
+        <meta charset="utf-8">
+        <title>Напрямую руководству</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body {
+                margin:0;
+                font-family:Arial,sans-serif;
+                background:linear-gradient(135deg,#08111f,#0f172a,#111827);
+                color:#e5e7eb;
+                min-height:100vh;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                padding:24px;
+            }
+            .card {
+                width:100%;
+                max-width:680px;
+                background:linear-gradient(180deg, rgba(24,34,53,.98), rgba(19,28,44,.98));
+                border:1px solid rgba(148,163,184,.08);
+                border-radius:24px;
+                padding:26px;
+                box-shadow:0 16px 35px rgba(0,0,0,.30);
+            }
+            h1 { margin:0 0 12px 0; }
+            p { color:#94a3b8; line-height:1.6; }
+            .info {
+                margin-top:16px;
+                padding:14px;
+                border-radius:14px;
+                background:rgba(124,58,237,.16);
+                border:1px solid rgba(167,139,250,.18);
+            }
+            a {
+                display:inline-block;
+                margin-top:18px;
+                padding:12px 16px;
+                border-radius:12px;
+                background:#334155;
+                color:white;
+                text-decoration:none;
+                font-weight:bold;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h1>📨 Напрямую руководству</h1>
+            <p>
+                На следующем этапе здесь появится отдельная форма обращения напрямую руководству:
+                Discord ID, тема, текст сообщения и позже прикрепление документов.
+            </p>
+            <div class="info">
+                После отправки обращение будет появляться в твоём разделе для рассмотрения и одобрения доступа.
+            </div>
+            <a href="/">На главную</a>
+        </div>
+    </body>
+    </html>
+    """
+    return render_template_string(template)
 
 
 # =========================
@@ -771,6 +1144,12 @@ def login():
                 background:rgba(220,38,38,.16);
                 color:#fecaca;
             }
+            .back {
+                display:inline-block;
+                margin-top:16px;
+                color:#94a3b8;
+                text-decoration:none;
+            }
         </style>
     </head>
     <body>
@@ -787,6 +1166,8 @@ def login():
                 {% if error %}
                     <div class="error">{{ error }}</div>
                 {% endif %}
+
+                <a class="back" href="/">← Вернуться на главную</a>
             </div>
         </div>
     </body>
@@ -805,7 +1186,7 @@ def logout():
 # DASHBOARD
 # =========================
 
-@app.route("/")
+@app.route("/admin")
 @login_required
 def dashboard():
     employees = get_all_employees()
@@ -1431,6 +1812,5 @@ def make_backup():
 # =========================
 
 if __name__ == "__main__":
-    import os
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
