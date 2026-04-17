@@ -1,4 +1,3 @@
-
 import json
 import os
 from datetime import datetime, timedelta
@@ -35,6 +34,7 @@ def backup_database() -> str:
         "employees",
         "discipline_records",
         "web_access_requests",
+        "web_users",
     ]
 
     dump = {
@@ -174,6 +174,27 @@ def init_db() -> None:
             cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_web_access_requests_status
             ON web_access_requests (status)
+            """)
+
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS web_users (
+                id SERIAL PRIMARY KEY,
+                discord_id BIGINT NOT NULL UNIQUE,
+                fio TEXT NOT NULL,
+                department TEXT NOT NULL,
+                position TEXT,
+                role TEXT NOT NULL DEFAULT 'employee',
+                password_hash TEXT NOT NULL,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                approved_request_id INTEGER,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """)
+
+            cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_web_users_discord_id
+            ON web_users (discord_id)
             """)
         conn.commit()
 
@@ -872,4 +893,79 @@ def update_access_request_status(
                 now_str(),
                 request_id,
             ))
+        conn.commit()
+
+
+# =========================
+# STAFF WEB USERS
+# =========================
+
+def get_web_user_by_discord_id(discord_id: int) -> Optional[dict]:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM web_users WHERE discord_id = %s", (discord_id,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
+def get_recent_web_users(limit: int = 100) -> list[dict]:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM web_users ORDER BY id DESC LIMIT %s", (limit,))
+            rows = cur.fetchall()
+            return [dict(row) for row in rows]
+
+
+def create_or_update_web_user(
+    discord_id: int,
+    fio: str,
+    department: str,
+    position: str,
+    password_hash: str,
+    role: str = "employee",
+    approved_request_id: int | None = None,
+) -> dict:
+    ts = now_str()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            INSERT INTO web_users (
+                discord_id, fio, department, position, role, password_hash,
+                is_active, approved_request_id, created_at, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (discord_id) DO UPDATE SET
+                fio = EXCLUDED.fio,
+                department = EXCLUDED.department,
+                position = EXCLUDED.position,
+                role = EXCLUDED.role,
+                password_hash = EXCLUDED.password_hash,
+                is_active = EXCLUDED.is_active,
+                approved_request_id = EXCLUDED.approved_request_id,
+                updated_at = EXCLUDED.updated_at
+            """, (
+                discord_id, fio, department, position, role, password_hash,
+                1, approved_request_id, ts, ts
+            ))
+        conn.commit()
+    return get_web_user_by_discord_id(discord_id)
+
+
+def set_web_user_password(discord_id: int, password_hash: str) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE web_users SET password_hash = %s, updated_at = %s WHERE discord_id = %s",
+                (password_hash, now_str(), discord_id),
+            )
+        conn.commit()
+
+
+def set_web_user_active(discord_id: int, is_active: int) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE web_users SET is_active = %s, updated_at = %s WHERE discord_id = %s",
+                (is_active, now_str(), discord_id),
+            )
         conn.commit()
