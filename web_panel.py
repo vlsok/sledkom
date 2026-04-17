@@ -766,3 +766,9 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
     app.run(host="0.0.0.0", port=port)
+
+
+@app.route("/admin")
+@login_required
+def dashboard():
+    return render_page("Дашборд", "<div class='card'><h3>Панель управления</h3><p>Раздел успешно восстановлен. Обнови страницу и проверь остальные разделы.</p></div>", active="dashboard")
