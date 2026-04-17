@@ -1,3 +1,4 @@
+
 import json
 import os
 from datetime import datetime, timedelta
@@ -19,16 +20,10 @@ def get_connection():
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
         raise ValueError("DATABASE_URL не найден в переменных окружения")
-
     return psycopg2.connect(database_url, cursor_factory=RealDictCursor)
 
 
 def backup_database() -> str:
-    """
-    Для PostgreSQL на Railway нельзя просто копировать .db файл, как в SQLite.
-    Поэтому делаем JSON-дамп основных таблиц.
-    Важно: на Railway файловая система временная, так что это скорее служебный экспорт.
-    """
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = BACKUP_DIR / f"bot_backup_{timestamp}.json"
@@ -39,6 +34,7 @@ def backup_database() -> str:
         "hr_requests",
         "employees",
         "discipline_records",
+        "web_access_requests",
     ]
 
     dump = {
@@ -156,6 +152,28 @@ def init_db() -> None:
                 issued_by_name TEXT NOT NULL,
                 created_at TEXT NOT NULL
             )
+            """)
+
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS web_access_requests (
+                id SERIAL PRIMARY KEY,
+                discord_id BIGINT NOT NULL,
+                fio TEXT NOT NULL,
+                department TEXT NOT NULL,
+                position TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'Новая',
+                reviewed_by BIGINT,
+                reviewed_by_name TEXT,
+                admin_comment TEXT,
+                created_at TEXT NOT NULL,
+                reviewed_at TEXT
+            )
+            """)
+
+            cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_web_access_requests_status
+            ON web_access_requests (status)
             """)
         conn.commit()
 
@@ -303,10 +321,7 @@ def create_appeal(
 def get_appeal_by_number(number: str) -> Optional[dict]:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM appeals WHERE number = %s",
-                (number,)
-            )
+            cur.execute("SELECT * FROM appeals WHERE number = %s", (number,))
             row = cur.fetchone()
             return dict(row) if row else None
 
@@ -314,10 +329,7 @@ def get_appeal_by_number(number: str) -> Optional[dict]:
 def get_recent_appeals(limit: int = 20) -> list[dict]:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM appeals ORDER BY id DESC LIMIT %s",
-                (limit,)
-            )
+            cur.execute("SELECT * FROM appeals ORDER BY id DESC LIMIT %s", (limit,))
             rows = cur.fetchall()
             return [dict(row) for row in rows]
 
@@ -432,12 +444,7 @@ def set_appeal_clarification(number: str, text: str, actor_id: int, actor_name: 
             UPDATE appeals
             SET status = %s, clarification_requested = 1, clarification_text = %s, updated_at = %s
             WHERE number = %s
-            """, (
-                "Требует уточнения",
-                text,
-                now_str(),
-                number
-            ))
+            """, ("Требует уточнения", text, now_str(), number))
         conn.commit()
 
     add_appeal_history(number, "Запрошено уточнение", actor_id, actor_name, text)
@@ -450,13 +457,7 @@ def set_citizen_reply(number: str, reply_text: str, user_id: int, username: str)
             UPDATE appeals
             SET citizen_reply_text = %s, citizen_reply_at = %s, updated_at = %s, status = %s
             WHERE number = %s
-            """, (
-                reply_text,
-                now_str(),
-                now_str(),
-                "В работе",
-                number
-            ))
+            """, (reply_text, now_str(), now_str(), "В работе", number))
         conn.commit()
 
     add_appeal_history(number, "Поступил ответ на уточнение", user_id, username, reply_text)
@@ -477,13 +478,7 @@ def close_appeal(
             UPDATE appeals
             SET status = %s, resolution_text = %s, updated_at = %s, closed_at = %s
             WHERE number = %s
-            """, (
-                status,
-                resolution_text,
-                now_str(),
-                now_str(),
-                number
-            ))
+            """, (status, resolution_text, now_str(), now_str(), number))
 
             if appeal and appeal.get("assigned_to"):
                 cur.execute("""
@@ -503,12 +498,7 @@ def archive_appeal(number: str, actor_id: int, actor_name: str) -> None:
             UPDATE appeals
             SET status = %s, archive_flag = 1, updated_at = %s, closed_at = %s
             WHERE number = %s
-            """, (
-                "Архив",
-                now_str(),
-                now_str(),
-                number
-            ))
+            """, ("Архив", now_str(), now_str(), number))
         conn.commit()
 
     add_appeal_history(number, "Обращение архивировано", actor_id, actor_name, "Карточка отправлена в архив")
@@ -534,19 +524,8 @@ def create_hr_request(
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
-                number,
-                user_id,
-                username,
-                fio,
-                age,
-                experience,
-                reason,
-                "На рассмотрении",
-                None,
-                None,
-                None,
-                created_at,
-                created_at
+                number, user_id, username, fio, age, experience, reason,
+                "На рассмотрении", None, None, None, created_at, created_at
             ))
         conn.commit()
 
@@ -556,10 +535,7 @@ def create_hr_request(
 def get_hr_request_by_number(number: str) -> Optional[dict]:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM hr_requests WHERE number = %s",
-                (number,)
-            )
+            cur.execute("SELECT * FROM hr_requests WHERE number = %s", (number,))
             row = cur.fetchone()
             return dict(row) if row else None
 
@@ -567,10 +543,7 @@ def get_hr_request_by_number(number: str) -> Optional[dict]:
 def get_recent_hr(limit: int = 20) -> list[dict]:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM hr_requests ORDER BY id DESC LIMIT %s",
-                (limit,)
-            )
+            cur.execute("SELECT * FROM hr_requests ORDER BY id DESC LIMIT %s", (limit,))
             rows = cur.fetchall()
             return [dict(row) for row in rows]
 
@@ -593,13 +566,7 @@ def update_hr_status(number: str, status: str, processed_by: int, processed_by_n
             UPDATE hr_requests
             SET status = %s, processed_by = %s, processed_by_name = %s, updated_at = %s
             WHERE number = %s
-            """, (
-                status,
-                processed_by,
-                processed_by_name,
-                now_str(),
-                number
-            ))
+            """, (status, processed_by, processed_by_name, now_str(), number))
         conn.commit()
 
 
@@ -632,20 +599,8 @@ def create_employee(
                 joined_at = EXCLUDED.joined_at,
                 probation_until = EXCLUDED.probation_until
             """, (
-                discord_id,
-                fio,
-                department,
-                position,
-                rank_name,
-                "Испытательный срок",
-                joined_at,
-                probation_until,
-                0,
-                0,
-                0,
-                0,
-                0,
-                None
+                discord_id, fio, department, position, rank_name, "Испытательный срок",
+                joined_at, probation_until, 0, 0, 0, 0, 0, None
             ))
         conn.commit()
 
@@ -694,20 +649,9 @@ def upsert_employee_from_web(
                 rewards_count = EXCLUDED.rewards_count,
                 notes = EXCLUDED.notes
             """, (
-                discord_id,
-                fio,
-                department,
-                position,
-                rank_name,
-                status,
-                joined_at,
-                probation_until,
-                cases_count,
-                closed_cases_count,
-                warnings_count,
-                promotions_count,
-                rewards_count,
-                notes
+                discord_id, fio, department, position, rank_name, status, joined_at,
+                probation_until, cases_count, closed_cases_count, warnings_count,
+                promotions_count, rewards_count, notes
             ))
         conn.commit()
 
@@ -717,10 +661,7 @@ def upsert_employee_from_web(
 def get_employee_by_discord_id(discord_id: int) -> Optional[dict]:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM employees WHERE discord_id = %s",
-                (discord_id,)
-            )
+            cur.execute("SELECT * FROM employees WHERE discord_id = %s", (discord_id,))
             row = cur.fetchone()
             return dict(row) if row else None
 
@@ -740,22 +681,14 @@ def search_employee_by_discord_id(discord_id: int) -> Optional[dict]:
 def update_employee_status(discord_id: int, status: str) -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-            UPDATE employees
-            SET status = %s
-            WHERE discord_id = %s
-            """, (status, discord_id))
+            cur.execute("UPDATE employees SET status = %s WHERE discord_id = %s", (status, discord_id))
         conn.commit()
 
 
 def update_employee_rank(discord_id: int, rank_name: str) -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-            UPDATE employees
-            SET rank_name = %s
-            WHERE discord_id = %s
-            """, (rank_name, discord_id))
+            cur.execute("UPDATE employees SET rank_name = %s WHERE discord_id = %s", (rank_name, discord_id))
         conn.commit()
 
 
@@ -769,11 +702,10 @@ def extend_probation(discord_id: int, days: int) -> dict | None:
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-            UPDATE employees
-            SET probation_until = %s
-            WHERE discord_id = %s
-            """, (new_dt.strftime("%d.%m.%Y %H:%M:%S"), discord_id))
+            cur.execute(
+                "UPDATE employees SET probation_until = %s WHERE discord_id = %s",
+                (new_dt.strftime("%d.%m.%Y %H:%M:%S"), discord_id)
+            )
         conn.commit()
 
     return get_employee_by_discord_id(discord_id)
@@ -798,28 +730,19 @@ def add_discipline_record(
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """, (
-                number,
-                discord_id,
-                fio,
-                action_type,
-                reason,
-                issued_by,
-                issued_by_name,
-                created_at
+                number, discord_id, fio, action_type, reason, issued_by, issued_by_name, created_at
             ))
 
             if action_type in ("Выговор", "Строгий выговор", "Предупреждение"):
-                cur.execute("""
-                UPDATE employees
-                SET warnings_count = warnings_count + 1
-                WHERE discord_id = %s
-                """, (discord_id,))
+                cur.execute(
+                    "UPDATE employees SET warnings_count = warnings_count + 1 WHERE discord_id = %s",
+                    (discord_id,)
+                )
             elif action_type in ("Награда", "Благодарность"):
-                cur.execute("""
-                UPDATE employees
-                SET rewards_count = rewards_count + 1
-                WHERE discord_id = %s
-                """, (discord_id,))
+                cur.execute(
+                    "UPDATE employees SET rewards_count = rewards_count + 1 WHERE discord_id = %s",
+                    (discord_id,)
+                )
         conn.commit()
 
     return get_discipline_record(number)
@@ -828,10 +751,7 @@ def add_discipline_record(
 def get_discipline_record(number: str) -> Optional[dict]:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM discipline_records WHERE number = %s",
-                (number,)
-            )
+            cur.execute("SELECT * FROM discipline_records WHERE number = %s", (number,))
             row = cur.fetchone()
             return dict(row) if row else None
 
@@ -842,10 +762,7 @@ def get_due_probations() -> list[dict]:
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-            SELECT * FROM employees
-            WHERE status = 'Испытательный срок'
-            """)
+            cur.execute("SELECT * FROM employees WHERE status = 'Испытательный срок'")
             rows = cur.fetchall()
 
     for row in rows:
@@ -858,3 +775,101 @@ def get_due_probations() -> list[dict]:
             result.append(row_dict)
 
     return result
+
+
+# =========================
+# ACCESS REQUESTS
+# =========================
+
+def create_web_access_request(
+    discord_id: int,
+    fio: str,
+    department: str,
+    position: str,
+    reason: str,
+) -> dict:
+    created_at = now_str()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            INSERT INTO web_access_requests (
+                discord_id, fio, department, position, reason, status,
+                reviewed_by, reviewed_by_name, admin_comment, created_at, reviewed_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING *
+            """, (
+                discord_id,
+                fio,
+                department,
+                position,
+                reason,
+                "Новая",
+                None,
+                None,
+                None,
+                created_at,
+                None,
+            ))
+            row = cur.fetchone()
+        conn.commit()
+        return dict(row)
+
+
+def get_access_request_by_id(request_id: int) -> Optional[dict]:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM web_access_requests WHERE id = %s", (request_id,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
+def get_recent_access_requests(limit: int = 100) -> list[dict]:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM web_access_requests ORDER BY id DESC LIMIT %s",
+                (limit,),
+            )
+            rows = cur.fetchall()
+            return [dict(row) for row in rows]
+
+
+def count_access_requests_by_status(status: str) -> int:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) AS count FROM web_access_requests WHERE status = %s",
+                (status,),
+            )
+            row = cur.fetchone()
+            return row["count"]
+
+
+def update_access_request_status(
+    request_id: int,
+    status: str,
+    reviewed_by: int | None = None,
+    reviewed_by_name: str | None = None,
+    admin_comment: str | None = None,
+) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            UPDATE web_access_requests
+            SET status = %s,
+                reviewed_by = %s,
+                reviewed_by_name = %s,
+                admin_comment = %s,
+                reviewed_at = %s
+            WHERE id = %s
+            """, (
+                status,
+                reviewed_by,
+                reviewed_by_name,
+                admin_comment,
+                now_str(),
+                request_id,
+            ))
+        conn.commit()
