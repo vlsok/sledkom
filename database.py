@@ -172,7 +172,6 @@ def init_db() -> None:
             )
             """)
 
-            # legacy-compatible web_users
             cur.execute("""
             CREATE TABLE IF NOT EXISTS web_users (
                 id SERIAL PRIMARY KEY,
@@ -183,7 +182,8 @@ def init_db() -> None:
                 role TEXT NOT NULL DEFAULT 'employee',
                 password TEXT,
                 is_active INTEGER NOT NULL DEFAULT 1,
-                created_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
                 notes TEXT
             )
             """)
@@ -201,7 +201,7 @@ def init_db() -> None:
             )
             """)
 
-            # migration-safe alters
+            # Migration-safe alters
             cur.execute("ALTER TABLE web_access_requests ADD COLUMN IF NOT EXISTS reviewed_by BIGINT")
             cur.execute("ALTER TABLE web_access_requests ADD COLUMN IF NOT EXISTS reviewed_by_name TEXT")
             cur.execute("ALTER TABLE web_access_requests ADD COLUMN IF NOT EXISTS approved_password TEXT")
@@ -213,13 +213,15 @@ def init_db() -> None:
             cur.execute("ALTER TABLE web_users ADD COLUMN IF NOT EXISTS password_hash TEXT")
             cur.execute("ALTER TABLE web_users ADD COLUMN IF NOT EXISTS is_active INTEGER DEFAULT 1")
             cur.execute("ALTER TABLE web_users ADD COLUMN IF NOT EXISTS created_at TEXT")
+            cur.execute("ALTER TABLE web_users ADD COLUMN IF NOT EXISTS updated_at TEXT")
             cur.execute("ALTER TABLE web_users ADD COLUMN IF NOT EXISTS notes TEXT")
 
+            now = now_str()
             cur.execute("UPDATE web_users SET role = COALESCE(role, 'employee')")
             cur.execute("UPDATE web_users SET is_active = COALESCE(is_active, 1)")
-            cur.execute("UPDATE web_users SET created_at = COALESCE(created_at, %s)", (now_str(),))
+            cur.execute("UPDATE web_users SET created_at = COALESCE(created_at, %s)", (now,))
+            cur.execute("UPDATE web_users SET updated_at = COALESCE(updated_at, created_at, %s)", (now,))
             cur.execute("UPDATE web_users SET password_hash = COALESCE(password_hash, password, 'TEMP_PASSWORD')")
-
             cur.execute("UPDATE web_access_requests SET status = COALESCE(status, 'Новая')")
 
         conn.commit()
@@ -447,7 +449,7 @@ def update_hr_status(number: str, status: str, processed_by: int, processed_by_n
 
 def create_employee(discord_id: int, fio: str, department: str = "СО", position: str = "Стажёр", rank_name: str = "Младший лейтенант юстиции", probation_days: int = 5) -> dict:
     joined_at = now_str()
-    probation_until = (datetime.now() + timedelta(days=probation_days)).strftime("%d.%m.%Y %H:%M:%S")
+    probation_until = (datetime.now() + timedelta(days=probation_days)).strftime("%d.%m.%Y %H:%М:%S")
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -594,8 +596,6 @@ def get_due_probations() -> list[dict]:
     return result
 
 
-# WEB ACCESS
-
 def create_web_access_request(discord_id: int, fio: str, department: str, position: str, reason: str) -> dict:
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -645,13 +645,14 @@ def generate_temp_password(length: int = 10) -> str:
 
 
 def create_or_update_web_user(discord_id: int, fio: str, department: str, password: str, role: str = "employee") -> dict:
+    now = now_str()
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
             INSERT INTO web_users (
-                discord_id, fio, department, password_hash, role, password, is_active, created_at
+                discord_id, fio, department, password_hash, role, password, is_active, created_at, updated_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (discord_id) DO UPDATE SET
                 fio = EXCLUDED.fio,
                 department = EXCLUDED.department,
@@ -659,9 +660,9 @@ def create_or_update_web_user(discord_id: int, fio: str, department: str, passwo
                 role = EXCLUDED.role,
                 password = EXCLUDED.password,
                 is_active = EXCLUDED.is_active,
-                created_at = COALESCE(web_users.created_at, EXCLUDED.created_at)
+                updated_at = EXCLUDED.updated_at
             RETURNING *
-            """, (discord_id, fio, department, password, role, password, 1, now_str()))
+            """, (discord_id, fio, department, password, role, password, 1, now, now))
             row = cur.fetchone()
         conn.commit()
     return dict(row)
