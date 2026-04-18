@@ -197,7 +197,8 @@ def init_db() -> None:
                 message TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'pending',
                 created_at TEXT NOT NULL,
-                sent_at TEXT
+                sent_at TEXT,
+                error_text TEXT
             )
             """)
 
@@ -215,6 +216,7 @@ def init_db() -> None:
             cur.execute("ALTER TABLE web_users ADD COLUMN IF NOT EXISTS created_at TEXT")
             cur.execute("ALTER TABLE web_users ADD COLUMN IF NOT EXISTS updated_at TEXT")
             cur.execute("ALTER TABLE web_users ADD COLUMN IF NOT EXISTS notes TEXT")
+            cur.execute("ALTER TABLE web_notifications ADD COLUMN IF NOT EXISTS error_text TEXT")
 
             now = now_str()
             cur.execute("UPDATE web_users SET role = COALESCE(role, 'employee')")
@@ -688,10 +690,13 @@ def get_pending_web_notifications(limit: int = 20) -> list[dict]:
             return [dict(row) for row in cur.fetchall()]
 
 
-def mark_web_notification_sent(notification_id: int) -> None:
+def mark_web_notification_sent(notification_id: int, error_text: Optional[str] = None) -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("UPDATE web_notifications SET status = %s, sent_at = %s WHERE id = %s", ("sent", now_str(), notification_id))
+            if error_text:
+                cur.execute("UPDATE web_notifications SET status = %s, sent_at = %s, error_text = %s WHERE id = %s", ("failed", now_str(), error_text[:1000], notification_id))
+            else:
+                cur.execute("UPDATE web_notifications SET status = %s, sent_at = %s, error_text = NULL WHERE id = %s", ("sent", now_str(), notification_id))
         conn.commit()
 
 
