@@ -383,45 +383,45 @@ def render_page(title: str, content: str, active: str = "dashboard"):
         <title>{{ title }}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
-            :root { --bg1:#08111f; --bg2:#0f172a; --bg3:#111827; --text:#e5e7eb; --muted:#94a3b8; --line:#334155; --blue:#2563eb; --blue2:#1d4ed8; --radius:20px; }
+            :root { --bg1:#fff8f8; --bg2:#fff3f3; --bg3:#ffe8e8; --text:#3a1010; --muted:#8a5d5d; --line:#e7c4c4; --blue:#a50000; --blue2:#7d0000; --radius:20px; }
             * { box-sizing:border-box; }
             body { margin:0; font-family:Arial,sans-serif; color:var(--text);
                 background: radial-gradient(circle at top right, rgba(37,99,235,.12), transparent 20%),
                             radial-gradient(circle at top left, rgba(124,58,237,.10), transparent 18%),
                             linear-gradient(135deg, var(--bg1), var(--bg2), var(--bg3)); min-height:100vh; }
             .layout { display:grid; grid-template-columns:280px 1fr; min-height:100vh; }
-            .sidebar { background:rgba(10,16,30,.88); backdrop-filter:blur(10px); border-right:1px solid rgba(148,163,184,.08); padding:24px 18px; }
+            .sidebar { background:linear-gradient(180deg,#8b0000,#b30000); color:#fff; border-right:1px solid rgba(255,255,255,.18); padding:24px 18px; }
             .brand h1 { margin:0 0 8px 0; font-size:22px; }
             .brand p { margin:0 0 24px 0; color:var(--muted); font-size:14px; }
             .nav { display:grid; gap:10px; }
-            .nav a { display:block; padding:14px; border-radius:14px; color:#dbeafe; text-decoration:none; border:1px solid transparent; }
-            .nav a:hover { background:rgba(37,99,235,.12); border-color:rgba(96,165,250,.18); }
-            .nav a.active { background:linear-gradient(135deg, rgba(37,99,235,.22), rgba(124,58,237,.16)); border-color:rgba(96,165,250,.22); }
+            .nav a { display:block; padding:14px; border-radius:14px; color:#fff5f5; text-decoration:none; border:1px solid transparent; }
+            .nav a:hover { background:rgba(255,255,255,.14); border-color:rgba(255,255,255,.22); }
+            .nav a.active { background:linear-gradient(135deg, rgba(255,255,255,.20), rgba(255,220,220,.14)); border-color:rgba(255,255,255,.28); }
             .main { padding:28px; }
             .topbar { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:20px; flex-wrap:wrap; }
             .topbar h2 { margin:0; font-size:26px; }
             .btn { display:inline-block; padding:11px 16px; border:none; border-radius:12px; background:var(--blue); color:white; font-weight:bold; cursor:pointer; text-decoration:none; }
-            .btn.secondary { background:#334155; }
-            .btn.red { background:#b91c1c; }
-            .message { padding:14px 16px; border-radius:14px; background:rgba(37,99,235,.18); border:1px solid rgba(147,197,253,.20); margin-bottom:20px; }
+            .btn.secondary { background:#ffffff; color:#a50000; border:1px solid #d8aaaa; }
+            .btn.red { background:#a50000; }
+            .message { padding:14px 16px; border-radius:14px; background:rgba(165,0,0,.08); border:1px solid rgba(165,0,0,.18); margin-bottom:20px; }
             .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-bottom:24px; }
             .row-2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-bottom:24px; }
             .row-3 { display:grid; grid-template-columns:1.2fr .8fr .8fr; gap:18px; margin-bottom:24px; }
-            .card { background:linear-gradient(180deg, rgba(24,34,53,.98), rgba(19,28,44,.98)); border:1px solid rgba(148,163,184,.08); border-radius:var(--radius); padding:18px; margin-bottom:20px; }
+            .card { background:#ffffff; border:1px solid #f0d0d0; box-shadow:0 14px 34px rgba(139,0,0,.08); border-radius:var(--radius); padding:18px; margin-bottom:20px; }
             .stat-number { font-size:32px; font-weight:bold; margin-top:8px; }
             table { width:100%; border-collapse:collapse; }
             th, td { padding:12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
-            th { background:#0d1728; color:#cbd5e1; }
-            input, select, textarea { width:100%; padding:11px 12px; border-radius:12px; border:1px solid #475569; background:#0f172a; color:white; margin-bottom:12px; outline:none; }
+            th { background:#9d1111; color:#fff; }
+            input, select, textarea { width:100%; padding:11px 12px; border-radius:12px; border:1px solid #d7b1b1; background:#fff; color:#3a1010; margin-bottom:12px; outline:none; }
             textarea { min-height:100px; resize:vertical; }
             .toolbar form { display:flex; gap:10px; flex-wrap:wrap; width:100%; }
             .toolbar input, .toolbar select { margin-bottom:0; min-width:170px; flex:1; }
-            .mini-item { padding:12px; border-radius:14px; background:rgba(255,255,255,.03); border:1px solid rgba(148,163,184,.08); margin-bottom:10px; }
+            .mini-item { padding:12px; border-radius:14px; background:#fff8f8; border:1px solid #edd1d1; margin-bottom:10px; }
             .big-center { font-size:18px; font-weight:bold; margin-bottom:6px; }
             .small { font-size:13px; color:var(--muted); }
-            .box { background:#0f172a; border:1px solid rgba(148,163,184,.08); border-radius:14px; padding:14px; }
+            .box { background:#fffafa; border:1px solid #efd0d0; border-radius:14px; padding:14px; }
             .kv { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
-            .timeline-item { padding:12px; border-radius:14px; background:rgba(255,255,255,.03); border:1px solid rgba(148,163,184,.08); margin-bottom:10px; }
+            .timeline-item { padding:12px; border-radius:14px; background:#fff8f8; border:1px solid #edd1d1; margin-bottom:10px; }
             @media (max-width:1100px){ .layout{grid-template-columns:1fr;} .row-2,.row-3,.kv{grid-template-columns:1fr;} }
         </style>
     </head>
@@ -429,8 +429,16 @@ def render_page(title: str, content: str, active: str = "dashboard"):
         <div class="layout">
             <aside class="sidebar">
                 <div class="brand">
-                    <h1>👑 СУ СК</h1>
-                    <p>Внутренняя панель управления</p>
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+                        <div style="width:54px;height:54px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;color:#8b0000;font-weight:900;font-size:20px;border:3px solid rgba(255,255,255,.55);box-shadow:0 6px 18px rgba(0,0,0,.18);">СК</div>
+                        <div>
+                            <h1 style="margin:0;font-size:22px;color:#fff;">СУ СК</h1>
+                            <p style="margin:4px 0 0 0;color:#ffe7e7;font-size:13px;">Следственный портал</p>
+                        </div>
+                    </div>
+                    <div style="padding:12px 14px;border-radius:14px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.16);font-size:13px;line-height:1.5;color:#fff5f5;">
+                        Личный кабинет руководства в красно-белой теме.
+                    </div>
                 </div>
                 <nav class="nav">
                     <a href="/admin" class="{{ 'active' if active == 'dashboard' else '' }}">📊 Дашборд</a>
@@ -483,25 +491,25 @@ def render_staff_page(title: str, content: str, active: str = "dashboard"):
             .brand h1 { margin:0 0 8px 0; font-size:22px; }
             .brand p { margin:0 0 24px 0; color:var(--muted); font-size:14px; }
             .nav { display:grid; gap:10px; }
-            .nav a { display:block; padding:14px; border-radius:14px; color:#dbeafe; text-decoration:none; border:1px solid transparent; }
+            .nav a { display:block; padding:14px; border-radius:14px; color:#fff5f5; text-decoration:none; border:1px solid transparent; }
             .nav a:hover { background:rgba(37,99,235,.12); }
             .nav a.active { background:linear-gradient(135deg, rgba(37,99,235,.22), rgba(124,58,237,.16)); }
             .main { padding:28px; }
             .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:16px; }
             .topbar h2 { margin:0; font-size:26px; }
             .btn { display:inline-block; padding:11px 16px; border:none; border-radius:12px; background:var(--blue); color:white; font-weight:bold; cursor:pointer; text-decoration:none; }
-            .btn.secondary { background:#334155; }
-            .message { padding:14px 16px; border-radius:14px; background:rgba(37,99,235,.18); border:1px solid rgba(147,197,253,.20); margin-bottom:20px; }
+            .btn.secondary { background:#ffffff; color:#a50000; border:1px solid #d8aaaa; }
+            .message { padding:14px 16px; border-radius:14px; background:rgba(165,0,0,.08); border:1px solid rgba(165,0,0,.18); margin-bottom:20px; }
             .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-bottom:24px; }
             .row-2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-bottom:24px; }
-            .card { background:linear-gradient(180deg, rgba(24,34,53,.98), rgba(19,28,44,.98)); border:1px solid rgba(148,163,184,.08); border-radius:20px; padding:18px; margin-bottom:20px; }
+            .card { background:#ffffff; border:1px solid #f0d0d0; box-shadow:0 14px 34px rgba(139,0,0,.08); border-radius:20px; padding:18px; margin-bottom:20px; }
             .stat-number { font-size:28px; font-weight:bold; margin-top:8px; }
-            .box { background:#0f172a; border:1px solid rgba(148,163,184,.08); border-radius:14px; padding:14px; }
+            .box { background:#fffafa; border:1px solid #efd0d0; border-radius:14px; padding:14px; }
             .kv { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
             table { width:100%; border-collapse:collapse; }
             th, td { padding:12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
-            th { background:#0d1728; color:#cbd5e1; }
-            input, select, textarea { width:100%; padding:11px 12px; border-radius:12px; border:1px solid #475569; background:#0f172a; color:white; margin-bottom:12px; outline:none; }
+            th { background:#9d1111; color:#fff; }
+            input, select, textarea { width:100%; padding:11px 12px; border-radius:12px; border:1px solid #d7b1b1; background:#fff; color:#3a1010; margin-bottom:12px; outline:none; }
             textarea { min-height:120px; resize:vertical; }
             @media (max-width:1100px){ .layout{grid-template-columns:1fr;} .row-2,.kv{grid-template-columns:1fr;} }
         </style>
@@ -510,8 +518,13 @@ def render_staff_page(title: str, content: str, active: str = "dashboard"):
         <div class="layout">
             <aside class="sidebar">
                 <div class="brand">
-                    <h1>👤 Кабинет сотрудника</h1>
-                    <p>{{ user.get('fio', 'Сотрудник') }}<br>{{ user.get('department', '—') }}</p>
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+                        <div style="width:54px;height:54px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;color:#8b0000;font-weight:900;font-size:20px;border:3px solid rgba(255,255,255,.55);box-shadow:0 6px 18px rgba(0,0,0,.18);">СК</div>
+                        <div>
+                            <h1 style="margin:0;font-size:21px;color:#fff;">Кабинет сотрудника</h1>
+                            <p style="margin:4px 0 0 0;color:#ffe7e7;font-size:13px;">{{ user.get('fio', 'Сотрудник') }} · {{ user.get('department', '—') }}</p>
+                        </div>
+                    </div>
                 </div>
                 <nav class="nav">
                     <a href="/staff/dashboard" class="{{ 'active' if active == 'dashboard' else '' }}">📊 Главная</a>
@@ -562,18 +575,21 @@ def public_index():
             .hero h1 { font-size:40px; margin:0 0 12px 0; }
             .hero p { margin:0 auto; max-width:720px; color:var(--muted); line-height:1.6; font-size:16px; }
             .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:20px; }
-            .card { background:linear-gradient(180deg, rgba(24,34,53,.98), rgba(19,28,44,.98)); border:1px solid rgba(148,163,184,.08); border-radius:var(--radius); padding:24px; }
+            .card { background:#ffffff; border:1px solid #f0d0d0; box-shadow:0 14px 34px rgba(139,0,0,.08); border-radius:var(--radius); padding:24px; }
             .card h3 { margin:0 0 12px 0; font-size:22px; }
-            .card p { margin:0 0 20px 0; color:var(--muted); line-height:1.6; min-height:90px; }
-            .btn { display:inline-block; padding:12px 18px; border-radius:14px; background:var(--blue); color:white; text-decoration:none; font-weight:bold; }
+            .card p { margin:0 0 20px 0; color:var(--muted); line-height:1.6; min-height:90px;color:#7a4b4b; }
+            .btn { display:inline-block; padding:12px 18px; border-radius:14px; background:#a50000; color:white; text-decoration:none; font-weight:bold; border:none; }
             .btn:hover { background:var(--blue2); }
         </style>
     </head>
     <body>
         <div class="shell">
-            <div class="hero">
-                <h1>👑 СУ СК — Веб-портал</h1>
-                <p>Единый портал для руководства и сотрудников. Раздел сотрудника включает кабинет, документы и сообщения руководству.</p>
+            <div class="hero" style="margin-bottom:30px;">
+                <div style="display:flex;justify-content:center;margin-bottom:18px;">
+                    <div style="width:88px;height:88px;border-radius:50%;background:#9d1111;color:#fff;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:900;box-shadow:0 14px 34px rgba(139,0,0,.18);border:6px solid #fff;">СК</div>
+                </div>
+                <h1 style="color:#8b0000;">СУ СК — Веб-портал</h1>
+                <p>Тестовая красно-белая тема в официальном стиле. Раздел сотрудника включает кабинет, документы и сообщения руководству.</p>
             </div>
             <div class="grid">
                 <div class="card">
@@ -613,14 +629,14 @@ def login():
     <!doctype html>
     <html lang="ru"><head><meta charset="utf-8"><title>Вход в панель</title><meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body { margin:0; font-family:Arial,sans-serif; background:linear-gradient(135deg,#08111f,#0f172a,#111827); color:#e5e7eb; min-height:100vh; }
+        body { margin:0; font-family:Arial,sans-serif; background:linear-gradient(180deg,#fff7f7,#fff0f0,#ffe8e8); color:#3a1010; min-height:100vh; }
         .login-wrap { display:flex; min-height:100vh; align-items:center; justify-content:center; padding:24px; }
-        .login-card { width:100%; max-width:420px; background:linear-gradient(180deg, rgba(24,34,53,.98), rgba(19,28,44,.98)); border:1px solid rgba(148,163,184,.08); border-radius:24px; padding:26px; }
-        h1 { margin:0 0 10px 0; } p { color:#94a3b8; margin-bottom:18px; }
-        input { width:100%; padding:12px; border-radius:12px; border:1px solid #475569; background:#0f172a; color:white; margin-bottom:14px; box-sizing:border-box; }
-        button { width:100%; padding:12px; border:none; border-radius:12px; background:#2563eb; color:white; font-weight:bold; cursor:pointer; }
+        .login-card { width:100%; max-width:420px; background:#ffffff; border:1px solid #f0d0d0; box-shadow:0 14px 34px rgba(139,0,0,.08); border-radius:24px; padding:26px; }
+        h1 { margin:0 0 10px 0; } p { color:#8a5d5d; margin-bottom:18px; }
+        input { width:100%; padding:12px; border-radius:12px; border:1px solid #d7b1b1; background:#fff; color:#3a1010; margin-bottom:14px; box-sizing:border-box; }
+        button { width:100%; padding:12px; border:none; border-radius:12px; background:#a50000; color:white; font-weight:bold; cursor:pointer; }
         .error { margin-top:12px; padding:12px; border-radius:12px; background:rgba(220,38,38,.16); color:#fecaca; }
-        .back { display:inline-block; margin-top:16px; color:#94a3b8; text-decoration:none; }
+        .back { display:inline-block; margin-top:16px; color:#8a5d5d; text-decoration:none; }
     </style></head>
     <body><div class="login-wrap"><div class="login-card">
         <h1>🔐 Вход в веб-панель</h1><p>Панель управления СУ СК</p>
@@ -683,13 +699,13 @@ def request_access():
         <title>Запрос доступа</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
-            body { margin:0; font-family:Arial,sans-serif; background:linear-gradient(135deg,#08111f,#0f172a,#111827); color:#e5e7eb; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
-            .card { width:100%; max-width:680px; background:linear-gradient(180deg, rgba(24,34,53,.98), rgba(19,28,44,.98)); border:1px solid rgba(148,163,184,.08); border-radius:24px; padding:26px; }
-            h1 { margin:0 0 12px 0; } p { color:#94a3b8; line-height:1.6; }
-            input, select, textarea { width:100%; padding:12px; border-radius:12px; border:1px solid #475569; background:#0f172a; color:white; margin-bottom:12px; box-sizing:border-box; }
+            body { margin:0; font-family:Arial,sans-serif; background:linear-gradient(180deg,#fff7f7,#fff0f0,#ffe8e8); color:#3a1010; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+            .card { width:100%; max-width:680px; background:#ffffff; border:1px solid #f0d0d0; box-shadow:0 14px 34px rgba(139,0,0,.08); border-radius:24px; padding:26px; }
+            h1 { margin:0 0 12px 0; } p { color:#8a5d5d; line-height:1.6; }
+            input, select, textarea { width:100%; padding:12px; border-radius:12px; border:1px solid #d7b1b1; background:#fff; color:#3a1010; margin-bottom:12px; box-sizing:border-box; }
             textarea { min-height:110px; resize:vertical; }
-            button, a.btn { display:inline-block; padding:12px 16px; border:none; border-radius:12px; background:#2563eb; color:white; text-decoration:none; font-weight:bold; cursor:pointer; }
-            a.secondary { background:#334155; }
+            button, a.btn { display:inline-block; padding:12px 16px; border:none; border-radius:12px; background:#a50000; color:white; text-decoration:none; font-weight:bold; cursor:pointer; }
+            a.secondary { background:#ffffff; color:#a50000; border:1px solid #d8aaaa; }
             .error { margin-bottom:12px; padding:12px; border-radius:12px; background:rgba(220,38,38,.16); color:#fecaca; }
             .success { margin-bottom:12px; padding:12px; border-radius:12px; background:rgba(22,163,74,.16); color:#bbf7d0; }
             .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; }
@@ -747,12 +763,12 @@ def staff_login():
         <title>Вход сотрудников</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
-            body { margin:0; font-family:Arial,sans-serif; background:linear-gradient(135deg,#08111f,#0f172a,#111827); color:#e5e7eb; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
-            .card { width:100%; max-width:560px; background:linear-gradient(180deg, rgba(24,34,53,.98), rgba(19,28,44,.98)); border:1px solid rgba(148,163,184,.08); border-radius:24px; padding:26px; }
-            h1 { margin:0 0 12px 0; } p { color:#94a3b8; line-height:1.6; }
-            input { width:100%; padding:12px; border-radius:12px; border:1px solid #475569; background:#0f172a; color:white; margin-bottom:12px; box-sizing:border-box; }
-            button, a.btn { display:inline-block; padding:12px 16px; border:none; border-radius:12px; background:#2563eb; color:white; text-decoration:none; font-weight:bold; cursor:pointer; }
-            a.secondary { background:#334155; }
+            body { margin:0; font-family:Arial,sans-serif; background:linear-gradient(180deg,#fff7f7,#fff0f0,#ffe8e8); color:#3a1010; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+            .card { width:100%; max-width:560px; background:#ffffff; border:1px solid #f0d0d0; box-shadow:0 14px 34px rgba(139,0,0,.08); border-radius:24px; padding:26px; }
+            h1 { margin:0 0 12px 0; } p { color:#8a5d5d; line-height:1.6; }
+            input { width:100%; padding:12px; border-radius:12px; border:1px solid #d7b1b1; background:#fff; color:#3a1010; margin-bottom:12px; box-sizing:border-box; }
+            button, a.btn { display:inline-block; padding:12px 16px; border:none; border-radius:12px; background:#a50000; color:white; text-decoration:none; font-weight:bold; cursor:pointer; }
+            a.secondary { background:#ffffff; color:#a50000; border:1px solid #d8aaaa; }
             .error { margin-bottom:12px; padding:12px; border-radius:12px; background:rgba(220,38,38,.16); color:#fecaca; }
             .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; }
         </style>
