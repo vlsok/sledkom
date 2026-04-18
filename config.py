@@ -44,17 +44,9 @@ ROLE_CRIMINALIST = require_int("ROLE_CRIMINALIST")
 ROLE_TRAINEE = require_int("ROLE_TRAINEE")
 EMPLOYEE_ROLE_ID = require_int("EMPLOYEE_ROLE_ID")
 
-ROLE_RANK_8 = require_int("ROLE_RANK_8")
-ROLE_RANK_9 = require_int("ROLE_RANK_9")
-
 LEADERSHIP_ROLE_IDS = {
     ROLE_LEADER,
     ROLE_DEPUTY,
-}
-
-LEADER_PANEL_ROLE_IDS = {
-    ROLE_RANK_8,
-    ROLE_RANK_9,
 }
 
 STAFF_ROLE_IDS = {
@@ -93,5 +85,5 @@ RANK_ROLE_IDS = {
     "Майор юстиции": require_int("ROLE_RANK_5"),
     "Подполковник юстиции": require_int("ROLE_RANK_6"),
     "Полковник юстиции": require_int("ROLE_RANK_7"),
-    "Генерал-майор юстиции": ROLE_RANK_8,
+    "Генерал-майор юстиции": require_int("ROLE_RANK_8"),
 }
