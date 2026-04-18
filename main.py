@@ -33,6 +33,7 @@ from config import (
     SO_ROLE_IDS,
     VSO_ROLE_IDS,
     RANK_ROLE_IDS,
+    LEADER_PANEL_ROLE_IDS,
 )
 
 from database import (
@@ -64,8 +65,6 @@ from database import (
     add_discipline_record,
     get_due_probations,
     backup_database,
-    get_pending_web_notifications,
-    mark_web_notification_sent,
 )
 
 # =========================
@@ -152,6 +151,10 @@ def member_has_staff_access(member: disnake.Member) -> bool:
 
 def member_has_hr_access(member: disnake.Member) -> bool:
     return has_any_role(member, LEADERSHIP_ROLE_IDS)
+
+
+def member_has_leader_panel_access(member: disnake.Member) -> bool:
+    return has_any_role(member, LEADER_PANEL_ROLE_IDS)
 
 
 def get_member_role_names(member: disnake.Member) -> list[str]:
@@ -1228,7 +1231,7 @@ class HRLogView(disnake.ui.View):
     @disnake.ui.button(label="✅ Принять", style=disnake.ButtonStyle.green, custom_id="hr_accept")
     async def accept(self, button: disnake.ui.Button, inter: disnake.MessageInteraction):
         try:
-            if not isinstance(inter.author, disnake.Member) or not member_has_hr_access(inter.author):
+            if not isinstance(inter.author, disnake.Member) or not member_has_leader_panel_access(inter.author):
                 await inter.response.send_message("❌ Только руководство может обрабатывать анкеты.", ephemeral=True)
                 return
 
@@ -1283,7 +1286,7 @@ class HRLogView(disnake.ui.View):
     @disnake.ui.button(label="❌ Отказать", style=disnake.ButtonStyle.red, custom_id="hr_reject")
     async def reject(self, button: disnake.ui.Button, inter: disnake.MessageInteraction):
         try:
-            if not isinstance(inter.author, disnake.Member) or not member_has_hr_access(inter.author):
+            if not isinstance(inter.author, disnake.Member) or not member_has_leader_panel_access(inter.author):
                 await inter.response.send_message("❌ Только руководство может обрабатывать анкеты.", ephemeral=True)
                 return
 
@@ -1321,7 +1324,7 @@ class ProbationView(disnake.ui.View):
     @disnake.ui.button(label="✅ Завершить", style=disnake.ButtonStyle.green, custom_id="probation_finish")
     async def finish(self, button: disnake.ui.Button, inter: disnake.MessageInteraction):
         try:
-            if not isinstance(inter.author, disnake.Member) or not member_has_hr_access(inter.author):
+            if not isinstance(inter.author, disnake.Member) or not member_has_leader_panel_access(inter.author):
                 await inter.response.send_message("❌ Только руководство может завершать испытательный срок.", ephemeral=True)
                 return
 
@@ -1357,7 +1360,7 @@ class ProbationView(disnake.ui.View):
     @disnake.ui.button(label="🔄 Продлить", style=disnake.ButtonStyle.secondary, custom_id="probation_extend")
     async def extend(self, button: disnake.ui.Button, inter: disnake.MessageInteraction):
         try:
-            if not isinstance(inter.author, disnake.Member) or not member_has_hr_access(inter.author):
+            if not isinstance(inter.author, disnake.Member) or not member_has_leader_panel_access(inter.author):
                 await inter.response.send_message("❌ Только руководство может продлевать испытательный срок.", ephemeral=True)
                 return
 
@@ -1387,7 +1390,7 @@ class ProbationView(disnake.ui.View):
     @disnake.ui.button(label="❌ Провалить", style=disnake.ButtonStyle.red, custom_id="probation_fail")
     async def fail(self, button: disnake.ui.Button, inter: disnake.MessageInteraction):
         try:
-            if not isinstance(inter.author, disnake.Member) or not member_has_hr_access(inter.author):
+            if not isinstance(inter.author, disnake.Member) or not member_has_leader_panel_access(inter.author):
                 await inter.response.send_message("❌ Только руководство может проваливать испытательный срок.", ephemeral=True)
                 return
 
@@ -1432,7 +1435,7 @@ class RankSelect(disnake.ui.StringSelect):
     async def callback(self, inter: disnake.MessageInteraction):
         try:
             if not isinstance(inter.author, disnake.Member) or not member_has_hr_access(inter.author):
-                await inter.response.send_message("❌ Только руководство может менять звания.", ephemeral=True)
+                await inter.response.send_message("❌ Доступ только для 8 и 9 ранга.", ephemeral=True)
                 return
 
             target = inter.guild.get_member(self.member_id)
@@ -1496,7 +1499,10 @@ class PanelView(disnake.ui.View):
 
 @bot.slash_command(name="panel", description="Панель обращений и анкет", guild_ids=[GUILD_ID])
 async def panel(inter: disnake.ApplicationCommandInteraction):
-    await inter.response.send_message(embed=build_panel_embed(), view=PanelView())
+    if not isinstance(inter.author, disnake.Member) or not member_has_leader_panel_access(inter.author):
+        await inter.response.send_message("❌ Доступ к /panel только для 8 и 9 ранга.", ephemeral=True)
+        return
+    await inter.response.send_message(embed=build_panel_embed(), view=PanelView(), ephemeral=True)
 
 
 @bot.slash_command(name="appeal_find", description="Найти обращение по номеру", guild_ids=[GUILD_ID])
@@ -1594,7 +1600,7 @@ async def create_employee_card(
     position: str = "Стажёр",
 ):
     if not isinstance(inter.author, disnake.Member) or not member_has_hr_access(inter.author):
-        await inter.response.send_message("❌ Только руководство может создавать карточки.", ephemeral=True)
+        await inter.response.send_message("❌ Доступ только для 8 и 9 ранга.", ephemeral=True)
         return
 
     if department not in {"СО", "ВСО"}:
@@ -1645,7 +1651,7 @@ async def create_employee_card(
 @bot.slash_command(name="set_rank_select", description="Изменить звание сотрудника", guild_ids=[GUILD_ID])
 async def set_rank_select(inter: disnake.ApplicationCommandInteraction, member: disnake.Member):
     if not isinstance(inter.author, disnake.Member) or not member_has_hr_access(inter.author):
-        await inter.response.send_message("❌ Только руководство может менять звания.", ephemeral=True)
+        await inter.response.send_message("❌ Доступ только для 8 и 9 ранга.", ephemeral=True)
         return
 
     employee = get_employee_by_discord_id(member.id)
@@ -1663,7 +1669,7 @@ async def set_rank_select(inter: disnake.ApplicationCommandInteraction, member: 
 @bot.slash_command(name="punish", description="Выдать дисциплинарную меру", guild_ids=[GUILD_ID])
 async def punish(inter: disnake.ApplicationCommandInteraction, member: disnake.Member, action_type: str, reason: str):
     if not isinstance(inter.author, disnake.Member) or not member_has_hr_access(inter.author):
-        await inter.response.send_message("❌ Только руководство может выдавать дисциплинарные меры.", ephemeral=True)
+        await inter.response.send_message("❌ Доступ только для 8 и 9 ранга.", ephemeral=True)
         return
 
     employee = get_employee_by_discord_id(member.id)
@@ -1698,7 +1704,7 @@ async def punish(inter: disnake.ApplicationCommandInteraction, member: disnake.M
 @bot.slash_command(name="leadership_panel", description="Кабинет руководства", guild_ids=[GUILD_ID])
 async def leadership_panel(inter: disnake.ApplicationCommandInteraction):
     if not isinstance(inter.author, disnake.Member) or not member_has_hr_access(inter.author):
-        await inter.response.send_message("❌ Только руководство может открыть кабинет.", ephemeral=True)
+        await inter.response.send_message("❌ Доступ только для 8 и 9 ранга.", ephemeral=True)
         return
 
     await inter.response.send_message(embed=build_leadership_panel_embed(), ephemeral=True)
@@ -1707,7 +1713,7 @@ async def leadership_panel(inter: disnake.ApplicationCommandInteraction):
 @bot.slash_command(name="make_backup", description="Сделать резервную копию базы", guild_ids=[GUILD_ID])
 async def make_backup(inter: disnake.ApplicationCommandInteraction):
     if not isinstance(inter.author, disnake.Member) or not member_has_hr_access(inter.author):
-        await inter.response.send_message("❌ Только руководство может делать бэкап.", ephemeral=True)
+        await inter.response.send_message("❌ Доступ только для 8 и 9 ранга.", ephemeral=True)
         return
 
     try:
@@ -1836,34 +1842,6 @@ async def check_probations():
         log_exception("check_probations", e)
 
 
-
-
-@tasks.loop(minutes=1)
-async def process_web_notifications():
-    try:
-        notifications = get_pending_web_notifications(20)
-        if not notifications:
-            return
-
-        for item in notifications:
-            try:
-                user = await bot.fetch_user(int(item["discord_id"]))
-                embed = disnake.Embed(
-                    title=item.get("title", "Уведомление"),
-                    description=item.get("message", ""),
-                    color=disnake.Color.blue(),
-                )
-                style_embed(embed)
-                await user.send(embed=embed)
-                mark_web_notification_sent(int(item["id"]))
-                logger.info("WEB notification sent to %s (%s)", user, item["discord_id"])
-            except Exception as inner_exc:
-                log_exception("process_web_notifications.send", inner_exc)
-                mark_web_notification_sent(int(item["id"]), error_text=str(inner_exc))
-    except Exception as e:
-        log_exception("process_web_notifications", e)
-
-
 # =========================
 # EVENTS
 # =========================
@@ -1878,8 +1856,6 @@ async def on_ready():
             check_stuck_appeals.start()
         if not check_probations.is_running():
             check_probations.start()
-        if not process_web_notifications.is_running():
-            process_web_notifications.start()
 
         guild = bot.get_guild(GUILD_ID)
         if guild:
