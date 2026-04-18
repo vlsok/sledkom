@@ -1494,7 +1494,10 @@ class PanelView(disnake.ui.View):
 
 @bot.slash_command(name="panel", description="Панель обращений и анкет", guild_ids=[GUILD_ID])
 async def panel(inter: disnake.ApplicationCommandInteraction):
-    await inter.response.send_message(embed=build_panel_embed(), view=PanelView())
+    if not isinstance(inter.author, disnake.Member) or not member_has_hr_access(inter.author):
+        await inter.response.send_message("❌ Доступ к /panel только для лидера и заместителя.", ephemeral=True)
+        return
+    await inter.response.send_message(embed=build_panel_embed(), view=PanelView(), ephemeral=True)
 
 
 @bot.slash_command(name="appeal_find", description="Найти обращение по номеру", guild_ids=[GUILD_ID])
