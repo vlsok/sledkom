@@ -1,158 +1,42 @@
-import json
-import os
-import secrets
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Optional
-
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from datetime import datetime
+import os
+import random
+import string
+from typing import Optional
 
-BASE_DIR = Path(__file__).resolve().parent
-BACKUP_DIR = BASE_DIR / "backups"
+DATABASE_URL = os.getenv("DATABASE_URL")
 
+# =========================
+# БАЗОВЫЕ ФУНКЦИИ
+# =========================
+
+def get_connection():
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 
 def now_str():
     return datetime.now().strftime("%d.%m.%Y %H:%M:%S")
 
+def generate_password(length=10):
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
-def get_connection():
-    database_url = os.getenv("DATABASE_URL")
-
-    if not database_url:
-        raise ValueError("DATABASE_URL не найден")
-
-    return psycopg2.connect(
-        database_url,
-        cursor_factory=RealDictCursor
-    )
-
+# =========================
+# ИНИЦИАЛИЗАЦИЯ БД
+# =========================
 
 def init_db():
     with get_connection() as conn:
         with conn.cursor() as cur:
-
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS appeals (
-                id SERIAL PRIMARY KEY,
-                number TEXT UNIQUE,
-                user_id BIGINT,
-                username TEXT,
-                appeal_type TEXT,
-                fio TEXT,
-                contact TEXT,
-                description TEXT,
-                status TEXT,
-                priority TEXT,
-                department TEXT,
-                assigned_to BIGINT,
-                accepted_by BIGINT,
-                accepted_by_name TEXT,
-                clarification_requested INTEGER DEFAULT 0,
-                clarification_text TEXT,
-                citizen_reply_text TEXT,
-                citizen_reply_at TEXT,
-                resolution_text TEXT,
-                archive_flag INTEGER DEFAULT 0,
-                log_message_id BIGINT,
-                work_channel_id BIGINT,
-                created_at TEXT,
-                updated_at TEXT,
-                closed_at TEXT
-            )
-            """)
-
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS appeal_history (
-                id SERIAL PRIMARY KEY,
-                appeal_number TEXT,
-                action TEXT,
-                actor_id BIGINT,
-                actor_name TEXT,
-                details TEXT,
-                created_at TEXT
-            )
-            """)
-
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS hr_requests (
-                id SERIAL PRIMARY KEY,
-                number TEXT UNIQUE,
-                user_id BIGINT,
-                username TEXT,
-                fio TEXT,
-                age TEXT,
-                experience TEXT,
-                reason TEXT,
-                status TEXT,
-                log_message_id BIGINT,
-                processed_by BIGINT,
-                processed_by_name TEXT,
-                created_at TEXT,
-                updated_at TEXT
-            )
-            """)
-
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS employees (
-                id SERIAL PRIMARY KEY,
-                discord_id BIGINT UNIQUE,
-                fio TEXT,
-                department TEXT,
-                position TEXT,
-                rank_name TEXT,
-                status TEXT,
-                joined_at TEXT,
-                probation_until TEXT,
-                cases_count INTEGER DEFAULT 0,
-                closed_cases_count INTEGER DEFAULT 0,
-                warnings_count INTEGER DEFAULT 0,
-                promotions_count INTEGER DEFAULT 0,
-                rewards_count INTEGER DEFAULT 0,
-                notes TEXT
-            )
-            """)
-
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS discipline_records (
-                id SERIAL PRIMARY KEY,
-                number TEXT UNIQUE,
-                discord_id BIGINT,
-                fio TEXT,
-                action_type TEXT,
-                reason TEXT,
-                issued_by BIGINT,
-                issued_by_name TEXT,
-                created_at TEXT
-            )
-            """)
-
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS web_access_requests (
-                id SERIAL PRIMARY KEY,
-                discord_id BIGINT,
-                fio TEXT,
-                department TEXT,
-                position TEXT,
-                reason TEXT,
-                status TEXT,
-                reviewed_by BIGINT,
-                reviewed_by_name TEXT,
-                approved_password TEXT,
-                created_at TEXT,
-                reviewed_at TEXT
-            )
-            """)
-
+            # Пользователи веб-панели
             cur.execute("""
             CREATE TABLE IF NOT EXISTS web_users (
                 id SERIAL PRIMARY KEY,
                 discord_id BIGINT UNIQUE,
                 fio TEXT,
                 department TEXT,
-                password_hash TEXT,
-                role TEXT,
                 password TEXT,
+                role TEXT,
                 is_active INTEGER DEFAULT 1,
                 created_at TEXT,
                 updated_at TEXT,
@@ -160,281 +44,279 @@ def init_db():
             )
             """)
 
+            # Заявки на доступ к вебу
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS web_access_requests (
+                id SERIAL PRIMARY KEY,
+                discord_id BIGINT,
+                fio TEXT,
+                department TEXT,
+                status TEXT DEFAULT 'pending',
+                created_at TEXT,
+                reviewed_at TEXT,
+                reviewed_by BIGINT,
+                reviewed_by_name TEXT
+            )
+            """)
+
+            # Обращения (Appeals)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS appeals (
+                id SERIAL PRIMARY KEY,
+                number TEXT UNIQUE,
+                discord_id BIGINT,
+                fio TEXT,
+                text TEXT,
+                status TEXT DEFAULT 'new',
+                created_at TEXT,
+                updated_at TEXT,
+                notes TEXT
+            )
+            """)
+
+            # HR Заявки
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS hr_requests (
+                id SERIAL PRIMARY KEY,
+                discord_id BIGINT,
+                fio TEXT,
+                age TEXT,
+                experience TEXT,
+                status TEXT DEFAULT 'pending',
+                log_message_id BIGINT,
+                created_at TEXT
+            )
+            """)
+
+            # Уведомления
             cur.execute("""
             CREATE TABLE IF NOT EXISTS web_notifications (
                 id SERIAL PRIMARY KEY,
-                discord_id BIGINT,
-                notification_type TEXT,
-                title TEXT,
-                message TEXT,
+                user_id BIGINT,
+                text TEXT,
                 status TEXT DEFAULT 'pending',
                 created_at TEXT,
                 sent_at TEXT,
                 error_text TEXT
             )
             """)
+            
+            # Дисциплинарные записи (заглушка таблицы)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS discipline_records (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT,
+                reason TEXT,
+                created_at TEXT
+            )
+            """)
 
         conn.commit()
 
+# =========================
+# ОБРАЩЕНИЯ (APPEALS)
+# =========================
 
-def generate_number(prefix, table):
-    year = datetime.now().year
-
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                f"SELECT COUNT(*) as count FROM {table}"
-            )
-
-            count = cur.fetchone()["count"] + 1
-
-    return f"{prefix}/{year}/{count:03d}"
-
-
-def generate_appeal_number():
-    return generate_number("СК-ЛО", "appeals")
-
-
-def generate_hr_number():
-    return generate_number("ОК-ЛО", "hr_requests")
-
-
-def generate_discipline_number():
-    return generate_number("ДИС-ЛО", "discipline_records")
-
-
-def add_appeal_history(
-    appeal_number,
-    action,
-    actor_id=None,
-    actor_name=None,
-    details=None
-):
+def create_appeal(discord_id, fio, text):
+    appeal_number = f"AP-{random.randint(10000, 99999)}"
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-            INSERT INTO appeal_history (
-                appeal_number,
-                action,
-                actor_id,
-                actor_name,
-                details,
-                created_at
-            )
-            VALUES (%s,%s,%s,%s,%s,%s)
-            """, (
-                appeal_number,
-                action,
-                actor_id,
-                actor_name,
-                details,
-                now_str()
-            ))
-
+                INSERT INTO appeals (number, discord_id, fio, text, created_at, status)
+                VALUES (%s, %s, %s, %s, %s, 'new')
+            """, (appeal_number, discord_id, fio, text, now_str()))
         conn.commit()
-
-
-def create_appeal(
-    user_id,
-    username,
-    appeal_type,
-    fio,
-    contact,
-    description
-):
-    number = generate_appeal_number()
-
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-
-            cur.execute("""
-            INSERT INTO appeals (
-                number,
-                user_id,
-                username,
-                appeal_type,
-                fio,
-                contact,
-                description,
-                status,
-                priority,
-                department,
-                created_at,
-                updated_at
-            )
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """, (
-                number,
-                user_id,
-                username,
-                appeal_type,
-                fio,
-                contact,
-                description,
-                "Принято",
-                "Обычный",
-                "СО",
-                now_str(),
-                now_str()
-            ))
-
-        conn.commit()
-
-    add_appeal_history(
-        number,
-        "Создано обращение",
-        user_id,
-        username
-    )
-
-    return get_appeal_by_number(number)
-
+    return appeal_number
 
 def get_appeal_by_number(number):
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM appeals WHERE number = %s",
-                (number,)
-            )
+            cur.execute("SELECT * FROM appeals WHERE number = %s", (number,))
+            return cur.fetchone()
 
-            row = cur.fetchone()
-
-            return dict(row) if row else None
-
-
-def get_appeal_history(number, limit=20):
+def get_recent_appeals():
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-            SELECT * FROM appeal_history
-            WHERE appeal_number = %s
-            ORDER BY id DESC
-            LIMIT %s
-            """, (number, limit))
-
-            return [dict(x) for x in cur.fetchall()]
-
-
-def get_recent_appeals(limit=20):
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-            SELECT * FROM appeals
-            ORDER BY id DESC
-            LIMIT %s
-            """, (limit,))
-
-            return [dict(x) for x in cur.fetchall()]
-
-def get_active_appeals(limit=50):
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-            SELECT * FROM appeals
-            WHERE archive_flag = 0
-            ORDER BY id DESC
-            LIMIT %s
-            """, (limit,))
-
-            return [dict(x) for x in cur.fetchall()]
+            cur.execute("SELECT * FROM appeals ORDER BY id DESC LIMIT 50")
+            return cur.fetchall()
 
 def count_appeals_by_status(status):
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-            SELECT COUNT(*) as count
-            FROM appeals
-            WHERE status = %s
-            AND archive_flag = 0
-            """, (status,))
+            cur.execute("SELECT COUNT(*) FROM appeals WHERE status = %s", (status,))
+            res = cur.fetchone()
+            return res['count'] if res else 0
 
-            return cur.fetchone()["count"]
-        
+# =========================
+# HR ФУНКЦИИ
+# =========================
 
-def mark_web_notification_sent(
-    notification_id,
-    error_text=None
-):
+def create_hr_request(discord_id, fio, age, experience):
     with get_connection() as conn:
         with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO hr_requests (discord_id, fio, age, experience, created_at)
+                VALUES (%s, %s, %s, %s, %s) RETURNING id
+            """, (discord_id, fio, age, experience, now_str()))
+            return cur.fetchone()['id']
 
-            if error_text:
-                cur.execute("""
-                UPDATE web_notifications
-                SET status = %s,
-                    sent_at = %s,
-                    error_text = %s
-                WHERE id = %s
-                """, (
-                    "failed",
-                    now_str(),
-                    error_text[:1000],
-                    notification_id
-                ))
-            else:
-                cur.execute("""
-                UPDATE web_notifications
-                SET status = %s,
-                    sent_at = %s
-                WHERE id = %s
-                """, (
-                    "sent",
-                    now_str(),
-                    notification_id
-                ))
+def count_hr_by_status(status):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM hr_requests WHERE status = %s", (status,))
+            res = cur.fetchone()
+            return res['count'] if res else 0
 
+def get_recent_hr():
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM hr_requests ORDER BY id DESC LIMIT 20")
+            return cur.fetchall()
+
+def set_hr_log_message_id(request_id, message_id):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE hr_requests SET log_message_id = %s WHERE id = %s", (message_id, request_id))
         conn.commit()
 
+def update_hr_status(request_id, status):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE hr_requests SET status = %s WHERE id = %s", (status, request_id))
+        conn.commit()
 
-def get_pending_web_notifications(limit=20):
+# =========================
+# СОТРУДНИКИ И ДОСТУП
+# =========================
+
+def create_employee(discord_id, fio, department, role):
+    create_or_update_web_user(discord_id, fio, department, role, generate_password())
+
+def add_discipline_record(user_id, reason):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO discipline_records (user_id, reason, created_at) VALUES (%s, %s, %s)", 
+                        (user_id, reason, now_str()))
+        conn.commit()
+
+def authenticate_web_user(discord_id, password):
+    user = get_user_by_discord(discord_id)
+    if user and user['password'] == password and user['is_active']:
+        return user
+    return None
+
+def create_access_request(discord_id, fio, department):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-            SELECT * FROM web_notifications
-            WHERE status = 'pending'
-            ORDER BY id ASC
-            LIMIT %s
-            """, (limit,))
+            INSERT INTO web_access_requests (discord_id, fio, department, created_at)
+            VALUES (%s, %s, %s, %s)
+            """, (discord_id, fio, department, now_str()))
+        conn.commit()
 
-            return [dict(x) for x in cur.fetchall()]
-
-
-def backup_database():
-    BACKUP_DIR.mkdir(exist_ok=True)
-
-    filename = BACKUP_DIR / f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-
-    data = {}
-
-    tables = [
-        "appeals",
-        "appeal_history",
-        "hr_requests",
-        "employees",
-        "discipline_records",
-        "web_access_requests",
-        "web_users",
-        "web_notifications"
-    ]
-
+def approve_web_access_request(request_id, reviewed_by, reviewed_by_name):
     with get_connection() as conn:
         with conn.cursor() as cur:
+            cur.execute("SELECT * FROM web_access_requests WHERE id = %s", (request_id,))
+            req = cur.fetchone()
+            if not req: return
+            pwd = generate_password()
+            create_or_update_web_user(req['discord_id'], req['fio'], req['department'], 'employee', pwd)
+            cur.execute("""
+                UPDATE web_access_requests SET status='approved', reviewed_at=%s, reviewed_by=%s, reviewed_by_name=%s WHERE id=%s
+            """, (now_str(), reviewed_by, reviewed_by_name, request_id))
+        conn.commit()
+        enqueue_web_notification(req['discord_id'], f"Доступ одобрен. Пароль: {pwd}")
 
-            for table in tables:
-                try:
-                    cur.execute(f"SELECT * FROM {table}")
-                    data[table] = list(cur.fetchall())
-                except:
-                    data[table] = []
+def reject_web_access_request(request_id, reviewed_by, reviewed_by_name):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE web_access_requests SET status='rejected', reviewed_at=%s, reviewed_by=%s, reviewed_by_name=%s WHERE id=%s
+            """, (now_str(), reviewed_by, reviewed_by_name, request_id))
+        conn.commit()
 
-    with open(filename, "w", encoding="utf-8") as f:
-        json.dump(
-            data,
-            f,
-            ensure_ascii=False,
-            indent=2,
-            default=str
-        )
+# =========================
+# СЛУЖЕБНЫЕ (ВЕБ И УВЕДОМЛЕНИЯ)
+# =========================
 
-    return str(filename)
+def get_user_by_discord(discord_id):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM web_users WHERE discord_id = %s", (discord_id,))
+            return cur.fetchone()
+
+def create_or_update_web_user(discord_id, fio, department, role, password):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            INSERT INTO web_users (discord_id, fio, department, password, role, is_active, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, 1, %s, %s)
+            ON CONFLICT (discord_id) DO UPDATE SET 
+            fio=EXCLUDED.fio, department=EXCLUDED.department, updated_at=EXCLUDED.updated_at
+            """, (discord_id, fio, department, password, role, now_str(), now_str()))
+        conn.commit()
+
+def enqueue_web_notification(user_id, text):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO web_notifications (user_id, text, created_at) VALUES (%s, %s, %s)", (user_id, text, now_str()))
+        conn.commit()
+
+def get_pending_notifications():
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM web_notifications WHERE status = 'pending'")
+            return cur.fetchall()
+
+def mark_web_notification_sent(notification_id, error_text=None):
+    status = 'sent' if not error_text else 'failed'
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE web_notifications SET status=%s, sent_at=%s, error_text=%s WHERE id=%s", 
+                        (status, now_str(), error_text, notification_id))
+        conn.commit()
+
+# =========================
+# ЗАГЛУШКИ ДЛЯ ИМПОРТОВ
+# =========================
+
+def get_all_employees():
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM web_users WHERE role != 'admin'")
+            return cur.fetchall()
+
+def get_all_web_users():
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM web_users")
+            return cur.fetchall()
+
+def count_web_access_requests_by_status(status):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM web_access_requests WHERE status = %s", (status,))
+            res = cur.fetchone()
+            return res['count'] if res else 0
+
+def get_recent_web_access_requests():
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM web_access_requests ORDER BY id DESC")
+            return cur.fetchall()
+
+def get_due_probations(): return []
+def search_employee_by_discord_id(d_id): return get_user_by_discord(d_id)
+def upsert_employee_from_web(**kwargs): pass
+def backup_database(): pass
+def get_access_request(rid):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM web_access_requests WHERE id = %s", (rid,))
+            return cur.fetchone()
+
+# Алиасы для совместимости
+get_web_access_request = get_access_request
+get_web_user_by_discord_id = get_user_by_discord
+get_latest_web_access_request_by_discord_id = get_access_request
