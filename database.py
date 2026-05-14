@@ -107,6 +107,7 @@ def get_access_request(request_id):
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM web_access_requests WHERE id = %s", (request_id,))
             return cur.fetchone()
+            get_web_access_request = get_access_request
 
 
 def approve_web_access_request(request_id, reviewed_by, reviewed_by_name):
