@@ -291,3 +291,20 @@ def get_latest_web_access_request_by_discord_id(d_id): return None
 def authenticate_web_user(u, p): return None
 def get_all_web_users(): return []
 def get_web_user_by_discord_id(d_id): return get_user_by_discord(d_id)
+
+# --- Совместимость имен ---
+get_web_access_request = get_access_request
+get_web_user_by_discord_id = get_user_by_discord
+
+# --- Если функций нет в коде, создаем заглушки ---
+if 'get_all_employees' not in locals():
+    def get_all_employees(): return []
+
+if 'search_employee_by_discord_id' not in locals():
+    def search_employee_by_discord_id(d_id): return None
+
+if 'upsert_employee_from_web' not in locals():
+    def upsert_employee_from_web(**kwargs): pass
+
+if 'backup_database' not in locals():
+    def backup_database(): pass
