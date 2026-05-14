@@ -76,7 +76,87 @@ def init_db():
 
         conn.commit()
 
+def create_appeal(user_id: int, username: str, appeal_type: str, fio: str, contact: str, description: str) -> dict:
+    number = generate_appeal_number()
+    department = determine_department(appeal_type, description)
+    priority = determine_priority(description)
+    created_at = now_str()
 
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            INSERT INTO appeals (
+                number,
+                user_id,
+                username,
+                appeal_type,
+                fio,
+                contact,
+                description,
+                status,
+                priority,
+                department,
+                assigned_to,
+                accepted_by,
+                accepted_by_name,
+                clarification_requested,
+                clarification_text,
+                citizen_reply_text,
+                citizen_reply_at,
+                resolution_text,
+                archive_flag,
+                log_message_id,
+                work_channel_id,
+                created_at,
+                updated_at,
+                closed_at
+            )
+            VALUES (
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s
+            )
+            """, (
+                number,
+                user_id,
+                username,
+                appeal_type,
+                fio,
+                contact,
+                description,
+                "Принято",
+                priority,
+                department,
+                None,
+                None,
+                None,
+                0,
+                None,
+                None,
+                None,
+                None,
+                0,
+                None,
+                None,
+                created_at,
+                created_at,
+                None
+            ))
+
+        conn.commit()
+
+    add_appeal_history(
+        number,
+        "Создано обращение",
+        user_id,
+        username,
+        f"Тип: {appeal_type} / Приоритет: {priority}"
+    )
+
+    return get_appeal_by_number(number)
+    
 # =========================
 # ACCESS REQUESTS
 # =========================
