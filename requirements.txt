@@ -2,3 +2,4 @@ disnake
 python-dotenv
 flask
 matplotlib
+psycopg2-binary
