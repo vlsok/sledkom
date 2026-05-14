@@ -367,6 +367,18 @@ def search_employee_by_discord_id(d_id): return None
 def upsert_employee_from_web(**kwargs): pass
 def backup_database(): pass
 def get_appeal_by_number(n): return None
+    def get_appeal_history(number: str, limit: int = 20) -> list[dict]:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            SELECT *
+            FROM appeal_history
+            WHERE appeal_number = %s
+            ORDER BY id DESC
+            LIMIT %s
+            """, (number, limit))
+
+            return [dict(row) for row in cur.fetchall()]
 def get_latest_web_access_request_by_discord_id(d_id): return None
 def authenticate_web_user(u, p): return None
 def get_all_web_users(): return []
