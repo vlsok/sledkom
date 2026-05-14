@@ -338,7 +338,7 @@ def get_active_appeals(limit=50):
             """, (limit,))
 
             return [dict(x) for x in cur.fetchall()]
-            
+
 def count_appeals_by_status(status):
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -350,6 +350,7 @@ def count_appeals_by_status(status):
             """, (status,))
 
             return cur.fetchone()["count"]
+        
 
 def mark_web_notification_sent(
     notification_id,
