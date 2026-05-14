@@ -376,15 +376,8 @@ def get_web_user_by_discord_id(d_id): return get_user_by_discord(d_id)
 get_web_access_request = get_access_request
 get_web_user_by_discord_id = get_user_by_discord
 
-# --- Если функций нет в коде, создаем заглушки ---
-if 'get_all_employees' not in locals():
-    def get_all_employees(): return []
-
-if 'search_employee_by_discord_id' not in locals():
-    def search_employee_by_discord_id(d_id): return None
-
-if 'upsert_employee_from_web' not in locals():
-    def upsert_employee_from_web(**kwargs): pass
-
-if 'backup_database' not in locals():
-    def backup_database(): pass
+def generate_appeal_number()
+def determine_department()
+def determine_priority()
+def add_appeal_history()
+def get_appeal_by_number()
