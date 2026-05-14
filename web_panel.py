@@ -1,5 +1,3 @@
-import database
-print(dir(database)) # Это выведет список всех доступных функций в консоль при запуске
 import os
 import uuid
 from urllib.parse import quote
@@ -16,9 +14,6 @@ from flask import (
     session,
     send_from_directory,
 )
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 
 from database import (
     init_db,
