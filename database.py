@@ -372,12 +372,13 @@ def authenticate_web_user(u, p): return None
 def get_all_web_users(): return []
 def get_web_user_by_discord_id(d_id): return get_user_by_discord(d_id)
 
-# --- Совместимость имен ---
-get_web_access_request = get_access_request
-get_web_user_by_discord_id = get_user_by_discord
+def generate_appeal_number() -> str:
+    return generate_number("СК-ЛО", "appeals")
 
-def generate_appeal_number()
-def determine_department()
-def determine_priority()
-def add_appeal_history()
-def get_appeal_by_number()
+
+def generate_hr_number() -> str:
+    return generate_number("ОК-ЛО", "hr_requests")
+
+
+def generate_discipline_number() -> str:
+    return generate_number("ДИС-ЛО", "discipline_records")
