@@ -244,3 +244,49 @@ def mark_web_notification_sent(notification_id: int, error_text: Optional[str] =
                 WHERE id = %s
                 """, (now_str(), notification_id))
         conn.commit()
+# =========================
+# APPEALS & STATS (Добавьте это)
+# =========================
+
+def count_appeals_by_status(status: str) -> int:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            # Убедитесь, что таблица appeals существует, или создайте её в init_db
+            cur.execute("SELECT COUNT(*) FROM appeals WHERE status = %s", (status,))
+            result = cur.fetchone()
+            return result['count'] if result else 0
+
+def count_hr_by_status(status: str) -> int:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM hr_applications WHERE status = %s", (status,))
+            result = cur.fetchone()
+            return result['count'] if result else 0
+
+def count_web_access_requests_by_status(status: str) -> int:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM web_access_requests WHERE status = %s", (status,))
+            result = cur.fetchone()
+            return result['count'] if result else 0
+
+def get_due_probations():
+    # Заглушка, если логика стажировок еще не описана
+    return []
+
+def get_all_employees():
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM employees ORDER BY fio ASC")
+            return cur.fetchall()
+
+# Добавьте пустые заглушки для остальных импортов, чтобы Flask хотя бы запустился:
+def get_recent_appeals(): return []
+def search_employee_by_discord_id(d_id): return None
+def upsert_employee_from_web(**kwargs): pass
+def backup_database(): pass
+def get_appeal_by_number(n): return None
+def get_latest_web_access_request_by_discord_id(d_id): return None
+def authenticate_web_user(u, p): return None
+def get_all_web_users(): return []
+def get_web_user_by_discord_id(d_id): return get_user_by_discord(d_id)
