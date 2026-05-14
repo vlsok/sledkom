@@ -327,6 +327,18 @@ def get_recent_appeals(limit=20):
 
             return [dict(x) for x in cur.fetchall()]
 
+def get_active_appeals(limit=50):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            SELECT * FROM appeals
+            WHERE archive_flag = 0
+            ORDER BY id DESC
+            LIMIT %s
+            """, (limit,))
+
+            return [dict(x) for x in cur.fetchall()]
+
 
 def mark_web_notification_sent(
     notification_id,
