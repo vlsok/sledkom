@@ -1,4 +1,5 @@
-
+import database
+print(dir(database)) # Это выведет список всех доступных функций в консоль при запуске
 import os
 import uuid
 from urllib.parse import quote
